@@ -6,6 +6,7 @@ import DashboardLayout from './components/DashboardLayout';
 import { AuthProvider } from './context/AuthContext';
 
 // Client Dashboard Pages
+import ClientDashboard from './pages/client/ClientDashboard'; // Import the ClientDashboard
 import PostJob from './pages/client/PostJob';
 import PostedJobs from './pages/client/PostedJobs';
 import CompletedJobs from './pages/client/CompletedJobs';
@@ -17,6 +18,7 @@ import WriterCompletedJobs from './pages/writer/CompletedJobs';
 
 // Admin Dashboard Pages
 import SuperadminDashboard from './pages/SuperadminDashboard';
+import WritersDashboard from "./pages/writer/WritersDashboard.jsx";
 
 function AppContent() {
   const location = useLocation();
@@ -34,6 +36,7 @@ function AppContent() {
 
         {/* Client Dashboard */}
         <Route path="/client/dashboard" element={<DashboardLayout />}>
+          <Route index element={<ClientDashboard />} /> {/* Add ClientDashboard as the default route */}
           <Route path="post-job" element={<PostJob />} />
           <Route path="posted-jobs" element={<PostedJobs />} />
           <Route path="completed-jobs" element={<CompletedJobs />} />
@@ -41,6 +44,7 @@ function AppContent() {
 
         {/* Writer Dashboard (to be implemented later) */}
         <Route path="/writer/dashboard" element={<DashboardLayout />}>
+          <Route index element={<WritersDashboard />} />
           <Route path="available-jobs" element={<AvailableJobs />} />
           <Route path="assigned-jobs" element={<AssignedJobs />} />
           <Route path="completed-jobs" element={<WriterCompletedJobs />} />

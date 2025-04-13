@@ -142,30 +142,62 @@ Bid.belongsTo(User, { foreignKey: 'writer_id' });
 User.hasMany(Testimonial, { foreignKey: 'client_id' });
 Testimonial.belongsTo(User, { foreignKey: 'client_id' });
 
-// Sync database and create indexes after tables are created
-sequelize.sync({ force: true }).then(async () => {
-  console.log('Database synced');
-
-  // Create indexes after tables are created
+// Sync database and create indexes
+const initializeDatabase = async () => {
   try {
-    await sequelize.query(`
-      CREATE INDEX idx_users_email ON users (email);
-      CREATE INDEX idx_users_role ON users (role);
-      CREATE INDEX idx_jobs_client_id ON jobs (client_id);
-      CREATE INDEX idx_jobs_status ON jobs (status);
-      CREATE INDEX idx_jobs_created_at ON jobs (created_at DESC);
-      CREATE INDEX idx_bids_job_id ON bids (job_id);
-      CREATE INDEX idx_bids_writer_id ON bids (writer_id);
-      CREATE INDEX idx_bids_status ON bids (status);
-      CREATE INDEX idx_testimonials_client_id ON testimonials (client_id);
-      CREATE INDEX idx_testimonials_created_at ON testimonials (created_at DESC);
-    `);
-    console.log('Indexes created');
+    // Authenticate the connection
+    await sequelize.authenticate();
+    console.log('Database connection established successfully');
+
+    // Sync database without dropping tables
+    await sequelize.sync({ force: false });
+    console.log('Database synced successfully');
+
+    // Create indexes if they don't exist
+    const indexes = [
+      { name: 'idx_users_email', table: 'users', column: 'email' },
+      { name: 'idx_users_role', table: 'users', column: 'role' },
+      { name: 'idx_jobs_client_id', table: 'jobs', column: 'client_id' },
+      { name: 'idx_jobs_status', table: 'jobs', column: 'status' },
+      { name: 'idx_jobs_created_at', table: 'jobs', column: 'created_at DESC' },
+      { name: 'idx_bids_job_id', table: 'bids', column: 'job_id' },
+      { name: 'idx_bids_writer_id', table: 'bids', column: 'writer_id' },
+      { name: 'idx_bids_status', table: 'bids', column: 'status' },
+      { name: 'idx_testimonials_client_id', table: 'testimonials', column: 'client_id' },
+      { name: 'idx_testimonials_created_at', table: 'testimonials', column: 'created_at DESC' },
+    ];
+
+    for (const index of indexes) {
+      try {
+        // Check if the index exists
+        const [results] = await sequelize.query(`
+          SELECT indexname 
+          FROM pg_indexes 
+          WHERE tablename = '${index.table}' 
+          AND indexname = '${index.name}'
+        `);
+
+        if (results.length === 0) {
+          // Index does not exist, create it
+          await sequelize.query(`
+            CREATE INDEX ${index.name} ON ${index.table} (${index.column});
+          `);
+          console.log(`Index ${index.name} created on ${index.table}`);
+        } else {
+          console.log(`Index ${index.name} already exists on ${index.table}`);
+        }
+      } catch (err) {
+        console.error(`Error creating index ${index.name} on ${index.table}:`, err);
+      }
+    }
+
+    console.log('Indexes setup completed');
   } catch (err) {
-    console.error('Error creating indexes:', err);
+    console.error('Error during database initialization:', err);
   }
-}).catch((err) => {
-  console.error('Error syncing database:', err);
-});
+};
+
+// Call the initialization function
+initializeDatabase();
 
 module.exports = { sequelize, User, Job, Bid, Testimonial };
