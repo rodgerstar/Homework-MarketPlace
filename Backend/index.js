@@ -3,12 +3,36 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
 const { User, Job, Bid } = require('./models');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'), false);
+    }
+  },
+}).single('file'); // Define upload middleware here
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -169,9 +193,17 @@ app.post('/api/superadmin/add-writer', authenticateToken, isSuperadmin, async (r
 });
 
 // Job Management Endpoints
-app.post('/api/jobs/post', authenticateToken, isClient, async (req, res) => {
+app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
+  upload(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message }); // Handle multer errors (e.g., wrong file type, missing folder)
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { title, description } = req.body;
+    const pdfUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
     if (!title || !description) {
       return res.status(400).json({ error: 'Title and description are required' });
@@ -180,13 +212,15 @@ app.post('/api/jobs/post', authenticateToken, isClient, async (req, res) => {
     const job = await Job.create({
       title,
       description,
+      pdf_url: pdfUrl,
       client_id: req.user.id,
       status: 'open',
     });
 
     res.json({ message: 'Job posted successfully', job });
   } catch (error) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error in /api/jobs/post:', error); // Log the error for debugging
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 

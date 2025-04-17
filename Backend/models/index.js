@@ -59,6 +59,10 @@ const Job = sequelize.define('Job', {
     type: DataTypes.TEXT,
     allowNull: false,
   },
+  pdf_url: { // Add column for PDF file path
+    type: DataTypes.STRING,
+    allowNull: true, // Optional field
+  },
   status: {
     type: DataTypes.ENUM('open', 'assigned', 'completed', 'cancelled'),
     allowNull: false,
@@ -145,15 +149,12 @@ Testimonial.belongsTo(User, { foreignKey: 'client_id' });
 // Sync database and create indexes
 const initializeDatabase = async () => {
   try {
-    // Authenticate the connection
     await sequelize.authenticate();
     console.log('Database connection established successfully');
 
-    // Sync database without dropping tables
-    await sequelize.sync({ force: false });
+    await sequelize.sync({ alter: true }); // Use alter: true to add the new column without dropping the table
     console.log('Database synced successfully');
 
-    // Create indexes if they don't exist
     const indexes = [
       { name: 'idx_users_email', table: 'users', column: 'email' },
       { name: 'idx_users_role', table: 'users', column: 'role' },
@@ -169,7 +170,6 @@ const initializeDatabase = async () => {
 
     for (const index of indexes) {
       try {
-        // Check if the index exists
         const [results] = await sequelize.query(`
           SELECT indexname 
           FROM pg_indexes 
@@ -178,7 +178,6 @@ const initializeDatabase = async () => {
         `);
 
         if (results.length === 0) {
-          // Index does not exist, create it
           await sequelize.query(`
             CREATE INDEX ${index.name} ON ${index.table} (${index.column});
           `);
@@ -197,7 +196,6 @@ const initializeDatabase = async () => {
   }
 };
 
-// Call the initialization function
 initializeDatabase();
 
 module.exports = { sequelize, User, Job, Bid, Testimonial };

@@ -4,9 +4,11 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import DashboardLayout from './components/DashboardLayout';
 import { AuthProvider } from './context/AuthContext';
+import { ToastContainer } from 'react-toastify'; // Import ToastContainer
+import 'react-toastify/dist/ReactToastify.css'; // Import toastify styles
 
 // Client Dashboard Pages
-import ClientDashboard from './pages/client/ClientDashboard'; // Import the ClientDashboard
+import ClientDashboard from './pages/client/ClientDashboard';
 import PostJob from './pages/client/PostJob';
 import PostedJobs from './pages/client/PostedJobs';
 import CompletedJobs from './pages/client/CompletedJobs';
@@ -36,7 +38,7 @@ function AppContent() {
 
         {/* Client Dashboard */}
         <Route path="/client/dashboard" element={<DashboardLayout />}>
-          <Route index element={<ClientDashboard />} /> {/* Add ClientDashboard as the default route */}
+          <Route index element={<ClientDashboard />} />
           <Route path="post-job" element={<PostJob />} />
           <Route path="posted-jobs" element={<PostedJobs />} />
           <Route path="completed-jobs" element={<CompletedJobs />} />
@@ -64,6 +66,7 @@ function App() {
     <AuthProvider>
       <Router>
         <AppContent />
+        <ToastContainer /> {/* Add ToastContainer here */}
       </Router>
     </AuthProvider>
   );

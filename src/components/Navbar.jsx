@@ -1,5 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { IconButton } from '@mui/material'; // Import IconButton for the logout icon
+import { Logout as LogoutIcon } from '@mui/icons-material'; // Import the logout icon
 
 function Navbar() {
   const { userRole, token, logout } = useAuth();
@@ -9,7 +11,7 @@ function Navbar() {
   const isLoginPage = location.pathname === '/login';
 
   return (
-    <nav className="bg-dark-green text-white py-4 px-4 md:px-6 flex items-center justify-between">
+    <nav className="bg-green-600 text-white py-4 px-4 md:px-6 flex items-center justify-between">
       {/* Logo (on the left) */}
       <div className="text-xl md:text-2xl font-bold flex-shrink-0">
         <Link to="/">Professor Ann</Link>
@@ -51,23 +53,13 @@ function Navbar() {
                   Testimonials
                 </Link>
               </li>
-              <li>
-                <Link to="/faq" className="hover:underline">
-                  FAQ
-                </Link>
-              </li>
-              <li>
-                <Link to="/how-it-works" className="hover:underline">
-                  How It Works
-                </Link>
-              </li>
 
               {/* Role-Specific Buttons */}
               {token && userRole === 'client' && (
                 <li>
                   <Link
                     to="/client/dashboard"
-                    className="border border-lime-green text-lime-green px-3 py-1 rounded hover:bg-lime-green hover:text-white transition"
+                    className="bg-lime-green text-white px-4 py-2 rounded-lg hover:bg-lime-green/80 transition-all duration-300 shadow-md hover:shadow-lg font-semibold"
                   >
                     Post Job
                   </Link>
@@ -77,7 +69,7 @@ function Navbar() {
                 <li>
                   <Link
                     to="/writer/dashboard"
-                    className="border-2 border-lime-green text-lime-green px-3 py-1 rounded-lg hover:bg-lime-green hover:text-white transition-all duration-300 shadow-md hover:shadow-lg"
+                    className="bg-lime-green text-white px-4 py-2 rounded-lg hover:bg-lime-green/80 transition-all duration-300 shadow-md hover:shadow-lg font-semibold"
                   >
                     Dashboard
                   </Link>
@@ -87,7 +79,7 @@ function Navbar() {
                 <li>
                   <Link
                     to="/superadmin"
-                    className="border border-lime-green text-lime-green px-3 py-1 rounded hover:bg-lime-green hover:text-white transition"
+                    className="bg-lime-green text-white px-4 py-2 rounded-lg hover:bg-lime-green/80 transition-all duration-300 shadow-md hover:shadow-lg font-semibold"
                   >
                     Admin Dashboard
                   </Link>
@@ -106,12 +98,18 @@ function Navbar() {
                 Login
               </Link>
             ) : (
-              <button
+              <IconButton
                 onClick={logout}
-                className="border border-white px-3 py-1 rounded hover:bg-white hover:text-dark-green transition"
+                className="border border-white rounded hover:bg-white transition"
+                sx={{
+                  color: 'white',
+                  '&:hover': {
+                    color: '#1A3C34', // Matches 'text-dark-green' on hover
+                  },
+                }}
               >
-                Logout
-              </button>
+                <LogoutIcon />
+              </IconButton>
             )}
           </div>
         </div>
