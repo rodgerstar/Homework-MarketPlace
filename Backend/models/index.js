@@ -38,7 +38,7 @@ const User = sequelize.define('User', {
     type: DataTypes.DATE,
     defaultValue: Sequelize.NOW,
   },
-});
+}, { tableName: 'users', timestamps: false });
 
 const Job = sequelize.define('Job', {
   id: {
@@ -49,6 +49,11 @@ const Job = sequelize.define('Job', {
   client_id: {
     type: DataTypes.UUID,
     allowNull: false,
+    references: { model: User, key: 'id' },
+  },
+  writer_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
     references: { model: User, key: 'id' },
   },
   title: {
@@ -64,16 +69,20 @@ const Job = sequelize.define('Job', {
     allowNull: true,
   },
   status: {
-    type: DataTypes.ENUM('in_progress', 'approved', 'assigned', 'completed', 'cancelled'),
+    type: DataTypes.ENUM('in_progress', 'assigned', 'due', 'late', 'completed', 'cancelled'),
     allowNull: false,
-    defaultValue: 'in_progress', // Default status for new jobs
+    defaultValue: 'in_progress',
   },
   client_bid_amount: {
-    type: DataTypes.DECIMAL(10, 2), // e.g., 100.50
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
   },
   admin_bid_amount: {
-    type: DataTypes.DECIMAL(10, 2), // Set by superadmin after approval
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  expected_return_date: {
+    type: DataTypes.DATE,
     allowNull: true,
   },
   created_at: {
@@ -84,7 +93,7 @@ const Job = sequelize.define('Job', {
     type: DataTypes.DATE,
     defaultValue: Sequelize.NOW,
   },
-});
+}, { tableName: 'jobs', timestamps: false });
 
 const Bid = sequelize.define('Bid', {
   id: {
@@ -103,19 +112,19 @@ const Bid = sequelize.define('Bid', {
     references: { model: User, key: 'id' },
   },
   amount: {
-    type: DataTypes.DECIMAL(10, 2), // Updated to DECIMAL for consistency with Job model
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
   },
   status: {
     type: DataTypes.ENUM('pending', 'accepted', 'rejected'),
     allowNull: false,
-    defaultValue: 'pending', // Default status for new bids
+    defaultValue: 'pending',
   },
   created_at: {
     type: DataTypes.DATE,
     defaultValue: Sequelize.NOW,
   },
-});
+}, { tableName: 'bids', timestamps: false });
 
 const Testimonial = sequelize.define('Testimonial', {
   id: {
@@ -141,13 +150,15 @@ const Testimonial = sequelize.define('Testimonial', {
     type: DataTypes.DATE,
     defaultValue: Sequelize.NOW,
   },
-});
+}, { tableName: 'testimonials', timestamps: false });
 
 // Relationships
 User.hasMany(Job, { foreignKey: 'client_id', as: 'jobs' });
 Job.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
+User.hasMany(Job, { foreignKey: 'writer_id', as: 'assigned_jobs' });
+Job.belongsTo(User, { foreignKey: 'writer_id', as: 'writer' });
 
-Job.hasMany(Bid, { foreignKey: 'job_id', as: 'bids' }); // Added 'as' alias for clarity
+Job.hasMany(Bid, { foreignKey: 'job_id', as: 'bids' });
 Bid.belongsTo(Job, { foreignKey: 'job_id', as: 'job' });
 
 User.hasMany(Bid, { foreignKey: 'writer_id', as: 'bids' });
@@ -169,6 +180,7 @@ const initializeDatabase = async () => {
       { name: 'idx_users_email', table: 'users', column: 'email' },
       { name: 'idx_users_role', table: 'users', column: 'role' },
       { name: 'idx_jobs_client_id', table: 'jobs', column: 'client_id' },
+      { name: 'idx_jobs_writer_id', table: 'jobs', column: 'writer_id' },
       { name: 'idx_jobs_status', table: 'jobs', column: 'status' },
       { name: 'idx_jobs_created_at', table: 'jobs', column: 'created_at DESC' },
       { name: 'idx_bids_job_id', table: 'bids', column: 'job_id' },

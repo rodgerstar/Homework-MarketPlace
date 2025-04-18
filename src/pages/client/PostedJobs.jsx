@@ -49,6 +49,7 @@ function PostedJobs() {
                 <th className="border border-gray-200 p-3 text-left text-sm font-semibold">Your Bid ($)</th>
                 <th className="border border-gray-200 p-3 text-left text-sm font-semibold">Admin Bid ($)</th>
                 <th className="border border-gray-200 p-3 text-left text-sm font-semibold">Posted On</th>
+                <th className="border border-gray-200 p-3 text-left text-sm font-semibold">Due Date</th>
                 <th className="border border-gray-200 p-3 text-left text-sm font-semibold">PDF</th>
               </tr>
             </thead>
@@ -66,6 +67,11 @@ function PostedJobs() {
                   </td>
                   <td className="border border-gray-200 p-3 text-sm text-gray-500">
                     {new Date(job.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="border border-gray-200 p-3 text-sm text-gray-500">
+                    {job.expected_return_date
+                      ? new Date(job.expected_return_date).toLocaleDateString()
+                      : 'Not set'}
                   </td>
                   <td className="border border-gray-200 p-3 text-sm">
                     {job.pdf_url ? (

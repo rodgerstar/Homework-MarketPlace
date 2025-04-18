@@ -96,6 +96,27 @@ const addSignedUrls = async (jobs, token) => {
   return jobsWithSignedUrls;
 };
 
+// Helper function to update job status based on expected_return_date
+const updateJobStatus = async (job) => {
+  if (!job.expected_return_date || job.status === 'completed' || job.status === 'cancelled' || job.status === 'in_progress') {
+    return job;
+  }
+
+  const now = new Date();
+  const returnDate = new Date(job.expected_return_date);
+  const dueThreshold = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
+
+  if (now > returnDate && job.status !== 'late') {
+    await Job.update({ status: 'late' }, { where: { id: job.id } });
+    job.status = 'late';
+  } else if (now >= new Date(returnDate - dueThreshold) && job.status === 'assigned') {
+    await Job.update({ status: 'due' }, { where: { id: job.id } });
+    job.status = 'due';
+  }
+
+  return job;
+};
+
 const createSuperuser = async () => {
   try {
     const superadminEmail = process.env.SUPABASE_SUPERADMIN_EMAIL;
@@ -153,15 +174,12 @@ app.post('/api/signup', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('Login attempt:', { email });
     const user = await User.findOne({ where: { email } });
     if (!user) {
-      console.log('User not found:', email);
       return res.status(400).json({ error: 'User not found' });
     }
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.log('Invalid password for user:', email);
       return res.status(400).json({ error: 'Invalid password' });
     }
     const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -217,11 +235,24 @@ app.post('/api/superadmin/add-writer', authenticateToken, isSuperadmin, async (r
 app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     let jobs = await Job.findAll({
-      where: { status: 'in_progress' },
-      include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+      where: {
+        status: 'in_progress',
+        admin_bid_amount: null, // Only jobs awaiting superadmin bid
+      },
+      include: [
+        { model: User, as: 'client', attributes: ['name', 'email'] },
+        {
+          model: Bid,
+          as: 'bids',
+          where: { status: 'pending' },
+          required: false, // Include jobs with or without bids
+          include: [{ model: User, as: 'writer', attributes: ['name', 'email'] }],
+        },
+      ],
     });
 
-    // Generate signed URLs for PDFs
+    console.log('Pending jobs:', JSON.stringify(jobs, null, 2));
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
 
     res.json(jobs);
@@ -231,93 +262,169 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
   }
 });
 
-app.patch('/api/superadmin/jobs/:id/approve', authenticateToken, isSuperadmin, async (req, res) => {
+// New endpoint for jobs with pending bids
+app.get('/api/superadmin/jobs/with-bids', authenticateToken, isSuperadmin, async (req, res) => {
+  try {
+    let jobs = await Job.findAll({
+      where: {
+        status: 'in_progress',
+        admin_bid_amount: { [Op.ne]: null }, // Only jobs with superadmin bid set
+      },
+      include: [
+        { model: User, as: 'client', attributes: ['name', 'email'] },
+        {
+          model: Bid,
+          as: 'bids',
+          where: { status: 'pending' },
+          required: true, // Only jobs with pending bids
+          include: [{ model: User, as: 'writer', attributes: ['name', 'email'] }],
+        },
+      ],
+    });
+
+    console.log('Jobs with pending bids:', JSON.stringify(jobs, null, 2));
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
+    jobs = await addSignedUrls(jobs, req.token);
+
+    res.json(jobs);
+  } catch (error) {
+    console.error('Error in /api/superadmin/jobs/with-bids:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+app.patch('/api/superadmin/jobs/:id/set-bid', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { admin_bid_amount } = req.body;
+    const { admin_bid_amount, expected_return_date } = req.body;
 
     const bidAmount = parseFloat(admin_bid_amount);
     if (isNaN(bidAmount) || bidAmount <= 0) {
       return res.status(400).json({ error: 'Invalid bid amount. Must be a number greater than 0.' });
     }
 
+    if (!expected_return_date || isNaN(Date.parse(expected_return_date))) {
+      return res.status(400).json({ error: 'Valid expected return date is required.' });
+    }
+
     const job = await Job.findByPk(id);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
     if (job.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Only jobs in progress can be approved' });
+      return res.status(400).json({ error: 'Only jobs in progress can be set for bidding' });
+    }
+
+    const clientReturnDate = new Date(job.expected_return_date);
+    const writerReturnDate = new Date(expected_return_date);
+    if (writerReturnDate > clientReturnDate) {
+      return res.status(400).json({ error: 'Writer return date cannot be after client’s expected return date' });
     }
 
     await Job.update(
       {
-        status: 'approved',
         admin_bid_amount: bidAmount,
+        expected_return_date: writerReturnDate,
         updated_at: new Date(),
       },
       { where: { id } }
     );
 
-    const updatedJob = await Job.findByPk(id, {
+    let updatedJob = await Job.findByPk(id, {
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
     });
 
-    // Generate signed URL for PDF
-    if (updatedJob.pdf_url) {
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
-        global: { headers: { Authorization: `Bearer ${req.token}` } },
-      });
-      const fileName = updatedJob.pdf_url.split('/').pop();
-      const { data, error } = await supabase.storage
-        .from('job-pdfs')
-        .createSignedUrl(fileName, 3600);
+    updatedJob = await updateJobStatus(updatedJob);
+    updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
 
-      if (error) {
-        console.error('Error generating signed URL:', error);
-        updatedJob.pdf_url = null;
-      } else {
-        updatedJob.pdf_url = data.signedUrl;
-      }
-    }
-
-    res.json({ message: 'Job approved successfully', job: updatedJob });
+    res.json({ message: 'Bid amount and return date set successfully', job: updatedJob });
   } catch (error) {
-    console.error('Error in /api/superadmin/jobs/:id/approve:', error);
+    console.error('Error in /api/superadmin/jobs/:id/set-bid:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 
-app.delete('/api/superadmin/jobs/:id', authenticateToken, isSuperadmin, async (req, res) => {
+app.get('/api/superadmin/jobs/:jobId/bids', authenticateToken, isSuperadmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jobId } = req.params;
 
-    const job = await Job.findByPk(id);
+    let job = await Job.findByPk(jobId, {
+      include: [
+        { model: User, as: 'client', attributes: ['name', 'email'] },
+        {
+          model: Bid,
+          as: 'bids',
+          include: [{ model: User, as: 'writer', attributes: ['name', 'email'] }],
+        },
+      ],
+    });
+
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    if (job.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Only jobs in progress can be cancelled by superadmin' });
+    job = await updateJobStatus(job);
+    job = (await addSignedUrls([job], req.token))[0];
+
+    res.json(job);
+  } catch (error) {
+    console.error('Error in /api/superadmin/jobs/:jobId/bids:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+app.patch('/api/superadmin/bids/:bidId/assign', authenticateToken, isSuperadmin, async (req, res) => {
+  try {
+    const { bidId } = req.params;
+
+    const bid = await Bid.findByPk(bidId, {
+      include: [
+        { model: Job, as: 'job' },
+        { model: User, as: 'writer', attributes: ['name', 'email'] },
+      ],
+    });
+    if (!bid) {
+      return res.status(404).json({ error: 'Bid not found' });
     }
 
-    // Initialize Supabase client for PDF deletion
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-    // Delete PDF if exists
-    if (job.pdf_url) {
-      const fileName = job.pdf_url.split('/').pop();
-      await supabase.storage.from('job-pdfs').remove([fileName]);
+    if (bid.status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending bids can be assigned' });
     }
 
-    await Job.update(
-      { status: 'cancelled', updated_at: new Date() },
-      { where: { id } }
+    const job = await Job.findByPk(bid.job_id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    await Bid.update(
+      { status: 'accepted', updated_at: new Date() },
+      { where: { id: bidId } }
     );
 
-    res.json({ message: 'Job cancelled successfully' });
+    await Job.update(
+      { status: 'assigned', writer_id: bid.writer_id, updated_at: new Date() },
+      { where: { id: bid.job_id } }
+    );
+
+    await Bid.update(
+      { status: 'rejected', updated_at: new Date() },
+      { where: { job_id: bid.job_id, id: { [Op.ne]: bidId }, status: 'pending' } }
+    );
+
+    let updatedJob = await Job.findByPk(bid.job_id, {
+      include: [
+        { model: User, as: 'client', attributes: ['name', 'email'] },
+        { model: User, as: 'writer', attributes: ['name', 'email'] },
+      ],
+    });
+
+    updatedJob = await updateJobStatus(updatedJob);
+    updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
+
+    res.json({ message: 'Writer assigned successfully', job: updatedJob });
   } catch (error) {
-    console.error('Error in /api/superadmin/jobs/:id (DELETE):', error);
+    console.error('Error in /api/superadmin/bids/:bidId/assign:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
@@ -332,15 +439,8 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { title, description, client_bid_amount } = req.body;
+    const { title, description, client_bid_amount, expected_return_date } = req.body;
     let pdfUrl = null;
-
-    console.log('Received FormData:', {
-      title,
-      description,
-      client_bid_amount,
-      file: req.file ? req.file.originalname : null,
-    });
 
     if (!title || !description) {
       return res.status(400).json({ error: 'Title and description are required' });
@@ -348,6 +448,22 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
     const bidAmount = parseFloat(client_bid_amount);
     if (isNaN(bidAmount) || bidAmount <= 0) {
       return res.status(400).json({ error: 'Invalid budget amount. Must be a number greater than 0.' });
+    }
+    if (!expected_return_date || isNaN(Date.parse(expected_return_date))) {
+      return res.status(400).json({ error: 'Valid expected return date is required.' });
+    }
+
+    const recentJob = await Job.findOne({
+      where: {
+        client_id: req.user.id,
+        title,
+        created_at: {
+          [Op.gte]: new Date(Date.now() - 5 * 60 * 1000),
+        },
+      },
+    });
+    if (recentJob) {
+      return res.status(400).json({ error: 'A similar job was recently posted. Please wait before posting again.' });
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -367,15 +483,6 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/job-pdfs/${fileName}`;
     }
 
-    console.log('Creating job with:', {
-      title,
-      description,
-      client_bid_amount: bidAmount,
-      pdf_url: pdfUrl,
-      client_id: req.user.id,
-      status: 'in_progress',
-    });
-
     const job = await Job.create({
       title,
       description,
@@ -383,28 +490,17 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       pdf_url: pdfUrl,
       client_id: req.user.id,
       status: 'in_progress',
+      expected_return_date: new Date(expected_return_date),
     });
 
-    if (pdfUrl) {
-      const supabaseWithToken = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
-        global: {
-          headers: { Authorization: `Bearer ${req.token}` },
-        },
-      });
-      const fileName = pdfUrl.split('/').pop();
-      const { data: signedUrlData, error } = await supabaseWithToken.storage
-        .from('job-pdfs')
-        .createSignedUrl(fileName, 3600);
+    let updatedJob = await Job.findByPk(job.id, {
+      include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+    });
 
-      if (error) {
-        console.error('Error generating signed URL:', error);
-        job.pdf_url = null;
-      } else {
-        job.pdf_url = signedUrlData.signedUrl;
-      }
-    }
+    updatedJob = await updateJobStatus(updatedJob);
+    updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
 
-    res.json({ message: 'Job posted successfully', job });
+    res.json({ message: 'Job posted successfully', job: updatedJob });
   } catch (error) {
     console.error('Error in /api/jobs/post:', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -421,6 +517,7 @@ app.get('/api/jobs/posted', authenticateToken, isClient, async (req, res) => {
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
     });
 
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
 
     res.json(jobs);
@@ -437,6 +534,7 @@ app.get('/api/jobs/completed', authenticateToken, isClient, async (req, res) => 
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
     });
 
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
 
     res.json(jobs);
@@ -449,7 +547,7 @@ app.get('/api/jobs/completed', authenticateToken, isClient, async (req, res) => 
 app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description } = req.body;
+    const { title, description, expected_return_date } = req.body;
     let pdfUrl = undefined;
 
     const job = await Job.findOne({ where: { id, client_id: req.user.id } });
@@ -457,8 +555,8 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
       return res.status(404).json({ error: 'Job not found or you do not have permission to edit this job' });
     }
 
-    if (job.status !== 'open') {
-      return res.status(400).json({ error: 'Only open jobs can be edited' });
+    if (job.status !== 'in_progress') {
+      return res.status(400).json({ error: 'Only in-progress jobs can be edited' });
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -478,39 +576,28 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
       pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/job-pdfs/${fileName}`;
 
       if (job.pdf_url) {
-        const oldFileName = job.pdf_url.split('/').pop();
-        await supabase.storage.from('job-pdfs').remove([oldFileName]);
+        const fileName = job.pdf_url.split('/').pop();
+        await supabase.storage.from('job-pdfs').remove([fileName]);
       }
     }
 
     const updatedData = {};
     if (title) updatedData.title = title;
     if (description) updatedData.description = description;
+    if (expected_return_date && !isNaN(Date.parse(expected_return_date))) {
+      updatedData.expected_return_date = new Date(expected_return_date);
+    }
     if (pdfUrl !== undefined) updatedData.pdf_url = pdfUrl;
     updatedData.updated_at = new Date();
 
     await Job.update(updatedData, { where: { id } });
 
-    const updatedJob = await Job.findByPk(id);
+    let updatedJob = await Job.findByPk(id, {
+      include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+    });
 
-    if (updatedJob.pdf_url) {
-      const supabaseWithToken = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
-        global: {
-          headers: { Authorization: `Bearer ${req.token}` },
-        },
-      });
-      const fileName = updatedJob.pdf_url.split('/').pop();
-      const { data: signedUrlData, error } = await supabaseWithToken.storage
-        .from('job-pdfs')
-        .createSignedUrl(fileName, 3600);
-
-      if (error) {
-        console.error('Error generating signed URL:', error);
-        updatedJob.pdf_url = null;
-      } else {
-        updatedJob.pdf_url = signedUrlData.signedUrl;
-      }
-    }
+    updatedJob = await updateJobStatus(updatedJob);
+    updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
 
     res.json({ message: 'Job updated successfully', job: updatedJob });
   } catch (error) {
@@ -528,8 +615,8 @@ app.delete('/api/jobs/:id', authenticateToken, isClient, async (req, res) => {
       return res.status(404).json({ error: 'Job not found or you do not have permission to cancel this job' });
     }
 
-    if (job.status !== 'open') {
-      return res.status(400).json({ error: 'Only open jobs can be cancelled' });
+    if (job.status !== 'in_progress') {
+      return res.status(400).json({ error: 'Only in-progress jobs can be cancelled' });
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -551,10 +638,19 @@ app.delete('/api/jobs/:id', authenticateToken, isClient, async (req, res) => {
 app.get('/api/jobs/available', authenticateToken, isWriter, async (req, res) => {
   try {
     let jobs = await Job.findAll({
-      where: { status: 'approved' },
+      where: { status: 'in_progress', admin_bid_amount: { [Op.ne]: null } },
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+      order: [['created_at', 'DESC']],
     });
 
+    const existingBids = await Bid.findAll({
+      where: { writer_id: req.user.id },
+      attributes: ['job_id'],
+    });
+    const bidJobIds = existingBids.map((bid) => bid.job_id);
+
+    jobs = jobs.filter((job) => !bidJobIds.includes(job.id));
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
 
     res.json(jobs);
@@ -572,8 +668,17 @@ app.post('/api/jobs/bid', authenticateToken, isWriter, async (req, res) => {
       return res.status(400).json({ error: 'Job ID and amount are required' });
     }
 
+    const bidAmount = parseFloat(amount);
+    if (isNaN(bidAmount) || bidAmount <= 0) {
+      return res.status(400).json({ error: 'Invalid bid amount. Must be a number greater than 0.' });
+    }
+
     const job = await Job.findByPk(job_id);
-    if (!job || job.status !== 'approved') {
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.status !== 'in_progress' || !job.admin_bid_amount) {
       return res.status(400).json({ error: 'Job not available for bidding' });
     }
 
@@ -584,14 +689,21 @@ app.post('/api/jobs/bid', authenticateToken, isWriter, async (req, res) => {
       return res.status(400).json({ error: 'You have already bid on this job' });
     }
 
-    const bid = await Job.create({
+    const bid = await Bid.create({
       job_id,
       writer_id: req.user.id,
-      amount,
+      amount: bidAmount,
       status: 'pending',
     });
 
-    res.json({ message: 'Bid placed successfully', bid });
+    let updatedJob = await Job.findByPk(job_id, {
+      include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+    });
+
+    updatedJob = await updateJobStatus(updatedJob);
+    updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
+
+    res.json({ message: 'Bid placed successfully', bid, job: updatedJob });
   } catch (error) {
     console.error('Error in /api/jobs/bid:', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -605,15 +717,23 @@ app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
       include: [
         {
           model: Job,
-          where: { status: 'assigned' },
-          include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+          as: 'job',
+          where: { status: ['assigned', 'due', 'late'] },
+          required: true,
+          include: [
+            {
+              model: User,
+              as: 'client',
+              attributes: ['name', 'email'],
+            },
+          ],
         },
       ],
     });
-    let jobs = bids.map((bid) => bid.Job);
-
+    let jobs = bids.map((bid) => bid.job).filter((job) => job !== null);
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
-
+    console.log('Assigned jobs sent:', JSON.stringify(jobs, null, 2));
     res.json(jobs);
   } catch (error) {
     console.error('Error in /api/jobs/assigned:', error);
@@ -628,15 +748,15 @@ app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, r
       include: [
         {
           model: Job,
+          as: 'job',
           where: { status: 'completed' },
           include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
         },
       ],
     });
-    let jobs = bids.map((bid) => bid.Job);
-
+    let jobs = bids.map((bid) => bid.job).filter((job) => job !== null);
+    jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
-
     res.json(jobs);
   } catch (error) {
     console.error('Error in /api/jobs/writer/completed:', error);
