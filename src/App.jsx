@@ -4,8 +4,8 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import DashboardLayout from './components/DashboardLayout';
 import { AuthProvider } from './context/AuthContext';
-import { ToastContainer } from 'react-toastify'; // Import ToastContainer
-import 'react-toastify/dist/ReactToastify.css'; // Import toastify styles
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Client Dashboard Pages
 import ClientDashboard from './pages/client/ClientDashboard';
@@ -13,20 +13,24 @@ import PostJob from './pages/client/PostJob';
 import PostedJobs from './pages/client/PostedJobs';
 import CompletedJobs from './pages/client/CompletedJobs';
 
-// Writer Dashboard Pages (to be created later)
+// Writer Dashboard Pages
 import AvailableJobs from './pages/writer/AvailableJobs';
 import AssignedJobs from './pages/writer/AssignedJobs';
 import WriterCompletedJobs from './pages/writer/CompletedJobs';
+import WritersDashboard from './pages/writer/WritersDashboard.jsx';
 
 // Admin Dashboard Pages
 import SuperadminDashboard from './pages/SuperadminDashboard';
-import WritersDashboard from "./pages/writer/WritersDashboard.jsx";
+import PendingJobs from './pages/admin/PendingJobs'; // New superadmin component
+import JobBids from './pages/admin/JobBids'; // New superadmin component
+import AddWriter from "./pages/admin/AddWriter.jsx";
 
 function AppContent() {
   const location = useLocation();
-  const isDashboardRoute = location.pathname.startsWith('/client/dashboard') ||
-                           location.pathname.startsWith('/writer/dashboard') ||
-                           location.pathname.startsWith('/superadmin');
+  const isDashboardRoute =
+    location.pathname.startsWith('/client/dashboard') ||
+    location.pathname.startsWith('/writer/dashboard') ||
+    location.pathname.startsWith('/superadmin');
 
   return (
     <div className="App">
@@ -44,7 +48,7 @@ function AppContent() {
           <Route path="completed-jobs" element={<CompletedJobs />} />
         </Route>
 
-        {/* Writer Dashboard (to be implemented later) */}
+        {/* Writer Dashboard */}
         <Route path="/writer/dashboard" element={<DashboardLayout />}>
           <Route index element={<WritersDashboard />} />
           <Route path="available-jobs" element={<AvailableJobs />} />
@@ -54,7 +58,10 @@ function AppContent() {
 
         {/* Admin Dashboard */}
         <Route path="/superadmin" element={<DashboardLayout />}>
-          <Route path="" element={<SuperadminDashboard />} />
+          <Route index element={<SuperadminDashboard />} />
+          <Route path="pending-jobs" element={<PendingJobs />} />
+          <Route path="job-bids" element={<JobBids />} />
+          <Route path="add-writer" element={<AddWriter/>} />
         </Route>
       </Routes>
     </div>
@@ -66,7 +73,7 @@ function App() {
     <AuthProvider>
       <Router>
         <AppContent />
-        <ToastContainer /> {/* Add ToastContainer here */}
+        <ToastContainer />
       </Router>
     </AuthProvider>
   );

@@ -8,6 +8,8 @@ import {
   Search as DocumentMagnifyingGlassIcon,
   Assignment as DocumentTextIcon,
   PersonAdd as UserPlusIcon,
+  Pending as PendingIcon, // Icon for Pending Jobs
+  Gavel as GavelIcon, // Icon for Job Bids (symbolizing bidding/auction)
 } from '@mui/icons-material';
 
 function Sidebar({ role, isCollapsed, setIsCollapsed }) {
@@ -28,8 +30,10 @@ function Sidebar({ role, isCollapsed, setIsCollapsed }) {
       { path: '/writer/dashboard/completed-jobs', label: 'Completed Jobs', icon: <DocumentCheckIcon /> },
     ],
     admin: [
+      { path: '/superadmin', label: 'Dashboard', icon: <DocumentTextIcon /> },
       { path: '/superadmin/add-writer', label: 'Add Writer', icon: <UserPlusIcon /> },
-      // Add more admin links as needed
+      { path: '/superadmin/pending-jobs', label: 'Pending Jobs', icon: <PendingIcon /> }, // New link for PendingJobs
+      { path: '/superadmin/job-bids', label: 'Job Bids', icon: <GavelIcon /> }, // New link for JobBids
     ],
   };
 
@@ -37,7 +41,7 @@ function Sidebar({ role, isCollapsed, setIsCollapsed }) {
   const user = {
     name: role === 'admin' ? 'Super Admin' : role === 'client' ? 'Client User' : 'Writer User',
     email: role === 'admin' ? 'superadmin@example.com' : role === 'client' ? 'client@example.com' : 'writer@example.com',
-    avatar: "url('/src/assets/avatar.jpg')" // Placeholder avatar image
+    avatar: "url('/src/assets/avatar.jpg')", // Placeholder avatar image
   };
 
   return (

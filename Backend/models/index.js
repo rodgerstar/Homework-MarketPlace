@@ -59,13 +59,22 @@ const Job = sequelize.define('Job', {
     type: DataTypes.TEXT,
     allowNull: false,
   },
-  pdf_url: { // Add column for PDF file path
+  pdf_url: {
     type: DataTypes.STRING,
-    allowNull: true, // Optional field
+    allowNull: true,
   },
   status: {
-    type: DataTypes.ENUM('open', 'assigned', 'completed', 'cancelled'),
+    type: DataTypes.ENUM('in_progress', 'approved', 'assigned', 'completed', 'cancelled'),
     allowNull: false,
+    defaultValue: 'in_progress', // Default status for new jobs
+  },
+  client_bid_amount: {
+    type: DataTypes.DECIMAL(10, 2), // e.g., 100.50
+    allowNull: false,
+  },
+  admin_bid_amount: {
+    type: DataTypes.DECIMAL(10, 2), // Set by superadmin after approval
+    allowNull: true,
   },
   created_at: {
     type: DataTypes.DATE,
@@ -94,12 +103,13 @@ const Bid = sequelize.define('Bid', {
     references: { model: User, key: 'id' },
   },
   amount: {
-    type: DataTypes.DECIMAL,
+    type: DataTypes.DECIMAL(10, 2), // Updated to DECIMAL for consistency with Job model
     allowNull: false,
   },
   status: {
     type: DataTypes.ENUM('pending', 'accepted', 'rejected'),
     allowNull: false,
+    defaultValue: 'pending', // Default status for new bids
   },
   created_at: {
     type: DataTypes.DATE,
@@ -134,17 +144,17 @@ const Testimonial = sequelize.define('Testimonial', {
 });
 
 // Relationships
-User.hasMany(Job, { foreignKey: 'client_id' });
-Job.belongsTo(User, { foreignKey: 'client_id' });
+User.hasMany(Job, { foreignKey: 'client_id', as: 'jobs' });
+Job.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 
-Job.hasMany(Bid, { foreignKey: 'job_id' });
-Bid.belongsTo(Job, { foreignKey: 'job_id' });
+Job.hasMany(Bid, { foreignKey: 'job_id', as: 'bids' }); // Added 'as' alias for clarity
+Bid.belongsTo(Job, { foreignKey: 'job_id', as: 'job' });
 
-User.hasMany(Bid, { foreignKey: 'writer_id' });
-Bid.belongsTo(User, { foreignKey: 'writer_id' });
+User.hasMany(Bid, { foreignKey: 'writer_id', as: 'bids' });
+Bid.belongsTo(User, { foreignKey: 'writer_id', as: 'writer' });
 
-User.hasMany(Testimonial, { foreignKey: 'client_id' });
-Testimonial.belongsTo(User, { foreignKey: 'client_id' });
+User.hasMany(Testimonial, { foreignKey: 'client_id', as: 'testimonials' });
+Testimonial.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 
 // Sync database and create indexes
 const initializeDatabase = async () => {
@@ -152,7 +162,7 @@ const initializeDatabase = async () => {
     await sequelize.authenticate();
     console.log('Database connection established successfully');
 
-    await sequelize.sync({ alter: true }); // Use alter: true to add the new column without dropping the table
+    await sequelize.sync({ alter: true });
     console.log('Database synced successfully');
 
     const indexes = [

@@ -2,104 +2,124 @@ import { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 
 function PostJob() {
   const { token } = useAuth();
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    file: null, // Add file to formData to handle PDF
+    client_bid_amount: '',
+    file: null,
   });
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  const handleChange = (e) => {
-    if (e.target.name === 'file') {
-      setFormData({ ...formData, file: e.target.files[0] }); // Handle file input
-    } else {
-      setFormData({ ...formData, [e.target.name]: e.target.value }); // Handle text inputs
-    }
-  };
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setLoading(true);
 
-    // Create a FormData object to handle file uploads
+    // Validate inputs
+    const bidAmount = parseFloat(formData.client_bid_amount);
+    if (!formData.title || !formData.description) {
+      toast.error('Title and description are required');
+      setLoading(false);
+      return;
+    }
+    if (isNaN(bidAmount) || bidAmount <= 0) {
+      toast.error('Please enter a valid budget greater than 0');
+      setLoading(false);
+      return;
+    }
+    if (formData.file && formData.file.size > 10 * 1024 * 1024) {
+      toast.error('File size exceeds 10MB limit');
+      setLoading(false);
+      return;
+    }
+
     const data = new FormData();
     data.append('title', formData.title);
     data.append('description', formData.description);
+    data.append('client_bid_amount', bidAmount.toString());
     if (formData.file) {
-      data.append('file', formData.file); // Append the PDF file
+      data.append('file', formData.file);
+    }
+
+    // Log FormData entries for debugging
+    console.log('FormData entries:');
+    for (let [key, value] of data.entries()) {
+      console.log(`${key}: ${value instanceof File ? value.name : value}`);
     }
 
     try {
-      const response = await axios.post(
-        'http://localhost:5000/api/jobs/post',
-        data,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data', // Required for file uploads
-          },
-        }
-      );
-      setSuccess('Job posted successfully!');
-      toast.success('Job posted successfully!', { autoClose: 3000 });
-      setFormData({ title: '', description: '', file: null }); // Reset form
-      // Reset the file input field
-      e.target.querySelector('input[type="file"]').value = null;
+      const response = await axios.post('http://localhost:5000/api/jobs/post', data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      toast.success('Job posted successfully! Awaiting admin approval.');
+      setFormData({ title: '', description: '', client_bid_amount: '', file: null });
+      document.querySelector('input[type="file"]').value = null;
+      console.log('Job posted successfully:', response.data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong');
-      toast.error(err.response?.data?.error || 'Something went wrong', { autoClose: 3000 });
+      console.error('Error posting job:', err.response?.data, err.message);
+      toast.error(err.response?.data?.error || 'Failed to post job');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-dark-green">Post a Job</h2>
-      {error && <p className="text-red-500 mb-4">{error}</p>}
-      {success && <p className="text-green-500 mb-4">{success}</p>}
+      <h2 className="text-2xl font-bold mb-6 text-dark-green">Post a New Job</h2>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label className="block mb-1 text-sm font-medium text-gray-700">Job Title</label>
+          <label className="block text-sm font-medium text-gray-700">Title</label>
           <input
             type="text"
-            name="title"
             value={formData.title}
-            onChange={handleChange}
-            className="w-full p-2 rounded bg-gray-100 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-green"
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
             required
           />
         </div>
         <div className="mb-4">
-          <label className="block mb-1 text-sm font-medium text-gray-700">Description</label>
+          <label className="block text-sm font-medium text-gray-700">Description</label>
           <textarea
-            name="description"
             value={formData.description}
-            onChange={handleChange}
-            className="w-full p-2 rounded bg-gray-100 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-green"
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
             rows="4"
             required
           />
         </div>
         <div className="mb-4">
-          <label className="block mb-1 text-sm font-medium text-gray-700">Upload PDF (Optional)</label>
+          <label className="block text-sm font-medium text-gray-700">Your Budget ($)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={formData.client_bid_amount}
+            onChange={(e) => setFormData({ ...formData, client_bid_amount: e.target.value })}
+            className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
+            required
+            min="0.01"
+            placeholder="Enter amount (e.g., 100.50)"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700">Upload PDF (optional, max 10MB)</label>
           <input
             type="file"
-            name="file"
-            accept="application/pdf" // Restrict to PDF files
-            onChange={handleChange}
-            className="w-full p-2 rounded bg-gray-100 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-green"
+            accept="application/pdf"
+            onChange={(e) => setFormData({ ...formData, file: e.target.files[0] })}
+            className="mt-1 p-2 w-full border rounded-md"
           />
         </div>
         <button
           type="submit"
-          className="w-full bg-lime-green text-white py-2 rounded-lg hover:bg-green-500 transition"
+          disabled={loading}
+          className="px-4 py-2 bg-dark-green text-white rounded-md hover:bg-lime-green disabled:opacity-50"
         >
-          Post Job
+          {loading ? 'Posting...' : 'Post Job'}
         </button>
       </form>
     </div>
