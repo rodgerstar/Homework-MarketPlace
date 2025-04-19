@@ -10,7 +10,7 @@ function Home() {
           backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url(${heroBg})`,
         }}
       >
-        <h1 className="text-5xl font-bold mb-4">Professor Ann EssayPro Writer</h1>
+        <h1 className="text-5xl font-bold mb-4">Professor Anne EssayPro Writer</h1>
         <p className="text-xl mb-6">
           Get top-notch essays, quizzes, Pearson & McGraw Hill homework, and exams done by professionals
         </p>

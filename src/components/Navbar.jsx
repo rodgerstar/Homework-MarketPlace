@@ -11,10 +11,10 @@ function Navbar() {
   const isLoginPage = location.pathname === '/login';
 
   return (
-    <nav className="bg-green-600 text-white py-4 px-4 md:px-6 flex items-center justify-between">
+    <nav className="bg-green-700 text-white py-4 px-4 md:px-6 flex items-center justify-between">
       {/* Logo (on the left) */}
       <div className="text-xl md:text-2xl font-bold flex-shrink-0">
-        <Link to="/">Professor Ann</Link>
+        <Link to="/">Anne EssayPro Writer</Link>
       </div>
 
       {/* Show full navbar only if not on login page */}
