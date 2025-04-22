@@ -8,8 +8,7 @@ function AvailableJobs() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [biddingJob, setBiddingJob] = useState(null);
-  const [bidAmount, setBidAmount] = useState('');
+  const [applyingJob, setApplyingJob] = useState(null);
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -34,31 +33,24 @@ function AvailableJobs() {
     return () => clearInterval(interval);
   }, [token]);
 
-  const handleBidClick = (job) => {
-    setBiddingJob(job);
-    setBidAmount('');
+  const handleApplyClick = (job) => {
+    setApplyingJob(job);
   };
 
-  const handleBidSubmit = async (e) => {
+  const handleApplySubmit = async (e) => {
     e.preventDefault();
-
-    if (!bidAmount || Number(bidAmount) <= 0) {
-      toast.error('Please enter a valid bid amount');
-      return;
-    }
 
     try {
       await axios.post(
-        'http://localhost:5000/api/jobs/bid',
-        { job_id: biddingJob.id, amount: parseFloat(bidAmount) },
+        'http://localhost:5000/api/jobs/apply',
+        { job_id: applyingJob.id },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setJobs((prevJobs) => prevJobs.filter((job) => job.id !== biddingJob.id));
-      setBiddingJob(null);
-      setBidAmount('');
-      toast.success('Bid placed successfully! Awaiting admin approval.');
+      setJobs((prevJobs) => prevJobs.filter((job) => job.id !== applyingJob.id));
+      setApplyingJob(null);
+      toast.success('Application submitted successfully! Awaiting admin approval.');
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Failed to place bid';
+      const errorMsg = err.response?.data?.error || 'Failed to apply for job';
       toast.error(errorMsg);
       if (errorMsg.includes('Job not found') || errorMsg.includes('Invalid job ID')) {
         // Refresh jobs if the job is no longer valid
@@ -67,7 +59,7 @@ function AvailableJobs() {
     }
   };
 
-  const handleDownloadPDF = async (pdfUrl, title) => {
+  const handleDownloadPDF = async (pdfUrl, description) => {
     try {
       const response = await axios.get(pdfUrl, {
         responseType: 'blob',
@@ -75,7 +67,7 @@ function AvailableJobs() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${title.replace(/\s+/g, '_')}.pdf`);
+      link.setAttribute('download', `${description.slice(0, 20).replace(/\s+/g, '_')}.pdf`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -105,9 +97,11 @@ function AvailableJobs() {
               className="relative bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-all duration-300"
             >
               <div className="absolute top-4 right-4 bg-lime-green text-white text-sm font-semibold px-3 py-1 rounded-full shadow-sm">
-                ${parseFloat(job.admin_bid_amount).toFixed(2)}
+                ${job.writer_share ? parseFloat(job.writer_share).toFixed(2) : 'N/A'}
               </div>
-              <h3 className="text-xl font-bold text-dark-green mb-3 pr-20 truncate">{job.title}</h3>
+              <h3 className="text-xl font-bold text-dark-green mb-3 pr-20 truncate">
+                {job.description.slice(0, 50)}
+              </h3>
               <p className="text-sm text-gray-500 mb-2">
                 <span className="font-medium">Posted:</span>{' '}
                 {new Date(job.created_at).toLocaleDateString('en-US', {
@@ -148,7 +142,7 @@ function AvailableJobs() {
                 </p>
                 {job.pdf_url && (
                   <button
-                    onClick={() => handleDownloadPDF(job.pdf_url, job.title)}
+                    onClick={() => handleDownloadPDF(job.pdf_url, job.description)}
                     className="inline-flex items-center px-4 py-2 bg-dark-green text-white text-sm font-medium rounded-md hover:bg-lime-green transition-colors duration-200 shadow-sm"
                   >
                     <svg
@@ -170,48 +164,37 @@ function AvailableJobs() {
                 )}
               </div>
               <button
-                onClick={() => handleBidClick(job)}
+                onClick={() => handleApplyClick(job)}
                 className="w-full bg-dark-green text-white py-2 rounded-md hover:bg-lime-green transition-colors duration-200 font-medium text-sm shadow-sm"
               >
-                Place Bid
+                Apply for Job
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {biddingJob && (
+      {applyingJob && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-            <h3 className="text-xl font-bold mb-4 text-dark-green">Place Your Bid</h3>
-            <form onSubmit={handleBidSubmit}>
+            <h3 className="text-xl font-bold mb-4 text-dark-green">Apply for Job</h3>
+            <form onSubmit={handleApplySubmit}>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700">Job Title</label>
-                <p className="mt-1 p-2 w-full border rounded-md bg-gray-100 text-gray-600">{biddingJob.title}</p>
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700">Reference Bid Amount ($)</label>
+                <label className="block text-sm font-medium text-gray-700">Job Description</label>
                 <p className="mt-1 p-2 w-full border rounded-md bg-gray-100 text-gray-600">
-                  ${parseFloat(biddingJob.admin_bid_amount).toFixed(2)}
+                  {applyingJob.description.slice(0, 50)}
                 </p>
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700">Your Bid Amount ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
-                  className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
-                  required
-                  min="0.01"
-                  placeholder="Enter your bid (e.g., 100.50)"
-                />
+                <label className="block text-sm font-medium text-gray-700">Your Earnings ($)</label>
+                <p className="mt-1 p-2 w-full border rounded-md bg-gray-100 text-gray-600">
+                  ${applyingJob.writer_share ? parseFloat(applyingJob.writer_share).toFixed(2) : 'N/A'}
+                </p>
               </div>
               <div className="flex justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setBiddingJob(null)}
+                  onClick={() => setApplyingJob(null)}
                   className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
                 >
                   Cancel
@@ -220,7 +203,7 @@ function AvailableJobs() {
                   type="submit"
                   className="px-4 py-2 bg-dark-green text-white rounded-md hover:bg-lime-green font-medium"
                 >
-                  Submit Bid
+                  Confirm Application
                 </button>
               </div>
             </form>

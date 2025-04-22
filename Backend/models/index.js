@@ -56,10 +56,6 @@ const Job = sequelize.define('Job', {
     allowNull: true,
     references: { model: User, key: 'id' },
   },
-  title: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
   description: {
     type: DataTypes.TEXT,
     allowNull: false,
@@ -77,10 +73,6 @@ const Job = sequelize.define('Job', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
   },
-  admin_bid_amount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true,
-  },
   expected_return_date: {
     type: DataTypes.DATE,
     allowNull: true,
@@ -92,6 +84,51 @@ const Job = sequelize.define('Job', {
   updated_at: {
     type: DataTypes.DATE,
     defaultValue: Sequelize.NOW,
+  },
+  urgency: {
+    type: DataTypes.ENUM('Normal', 'Urgent'),
+    allowNull: false,
+    defaultValue: 'Normal',
+  },
+  assignment_type: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  subject: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  quantity: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+  },
+  spacing: {
+    type: DataTypes.ENUM('Single', 'Double'),
+    allowNull: false,
+    defaultValue: 'Double',
+  },
+  level: {
+    type: DataTypes.ENUM('High School', 'Undergraduate', 'Masters', 'PhD'),
+    allowNull: false,
+    defaultValue: 'Undergraduate',
+  },
+  language: {
+    type: DataTypes.ENUM('English (US)', 'English (UK)'),
+    allowNull: false,
+  },
+  citation_style: {
+    type: DataTypes.ENUM('APA', 'MLA', 'Chicago', 'Harvard'),
+    allowNull: false,
+    defaultValue: 'APA',
+  },
+  number_of_sources: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0,
+  },
+  writer_share: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
   },
 }, { tableName: 'jobs', timestamps: false });
 
@@ -110,10 +147,6 @@ const Bid = sequelize.define('Bid', {
     type: DataTypes.UUID,
     allowNull: false,
     references: { model: User, key: 'id' },
-  },
-  amount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
   },
   status: {
     type: DataTypes.ENUM('pending', 'accepted', 'rejected'),

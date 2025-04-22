@@ -237,7 +237,6 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
     let jobs = await Job.findAll({
       where: {
         status: 'in_progress',
-        admin_bid_amount: null, // Only jobs awaiting superadmin bid
       },
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
@@ -245,7 +244,7 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
           model: Bid,
           as: 'bids',
           where: { status: 'pending' },
-          required: false, // Include jobs with or without bids
+          required: false,
           include: [{ model: User, as: 'writer', attributes: ['name', 'email'] }],
         },
       ],
@@ -262,13 +261,12 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
   }
 });
 
-// New endpoint for jobs with pending bids
-app.get('/api/superadmin/jobs/with-bids', authenticateToken, isSuperadmin, async (req, res) => {
+// New endpoint for jobs with pending applications
+app.get('/api/superadmin/jobs/with-applications', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     let jobs = await Job.findAll({
       where: {
         status: 'in_progress',
-        admin_bid_amount: { [Op.ne]: null }, // Only jobs with superadmin bid set
       },
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
@@ -276,76 +274,24 @@ app.get('/api/superadmin/jobs/with-bids', authenticateToken, isSuperadmin, async
           model: Bid,
           as: 'bids',
           where: { status: 'pending' },
-          required: true, // Only jobs with pending bids
+          required: true,
           include: [{ model: User, as: 'writer', attributes: ['name', 'email'] }],
         },
       ],
     });
 
-    console.log('Jobs with pending bids:', JSON.stringify(jobs, null, 2));
+    console.log('Jobs with pending applications:', JSON.stringify(jobs, null, 2));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
 
     res.json(jobs);
   } catch (error) {
-    console.error('Error in /api/superadmin/jobs/with-bids:', error);
+    console.error('Error in /api/superadmin/jobs/with-applications:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 
-app.patch('/api/superadmin/jobs/:id/set-bid', authenticateToken, isSuperadmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { admin_bid_amount, expected_return_date } = req.body;
-
-    const bidAmount = parseFloat(admin_bid_amount);
-    if (isNaN(bidAmount) || bidAmount <= 0) {
-      return res.status(400).json({ error: 'Invalid bid amount. Must be a number greater than 0.' });
-    }
-
-    if (!expected_return_date || isNaN(Date.parse(expected_return_date))) {
-      return res.status(400).json({ error: 'Valid expected return date is required.' });
-    }
-
-    const job = await Job.findByPk(id);
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    if (job.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Only jobs in progress can be set for bidding' });
-    }
-
-    const clientReturnDate = new Date(job.expected_return_date);
-    const writerReturnDate = new Date(expected_return_date);
-    if (writerReturnDate > clientReturnDate) {
-      return res.status(400).json({ error: 'Writer return date cannot be after client’s expected return date' });
-    }
-
-    await Job.update(
-      {
-        admin_bid_amount: bidAmount,
-        expected_return_date: writerReturnDate,
-        updated_at: new Date(),
-      },
-      { where: { id } }
-    );
-
-    let updatedJob = await Job.findByPk(id, {
-      include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
-    });
-
-    updatedJob = await updateJobStatus(updatedJob);
-    updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
-
-    res.json({ message: 'Bid amount and return date set successfully', job: updatedJob });
-  } catch (error) {
-    console.error('Error in /api/superadmin/jobs/:id/set-bid:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
-  }
-});
-
-app.get('/api/superadmin/jobs/:jobId/bids', authenticateToken, isSuperadmin, async (req, res) => {
+app.get('/api/superadmin/jobs/:jobId/applications', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     const { jobId } = req.params;
 
@@ -369,50 +315,50 @@ app.get('/api/superadmin/jobs/:jobId/bids', authenticateToken, isSuperadmin, asy
 
     res.json(job);
   } catch (error) {
-    console.error('Error in /api/superadmin/jobs/:jobId/bids:', error);
+    console.error('Error in /api/superadmin/jobs/:jobId/applications:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 
-app.patch('/api/superadmin/bids/:bidId/assign', authenticateToken, isSuperadmin, async (req, res) => {
+app.patch('/api/superadmin/applications/:applicationId/assign', authenticateToken, isSuperadmin, async (req, res) => {
   try {
-    const { bidId } = req.params;
+    const { applicationId } = req.params;
 
-    const bid = await Bid.findByPk(bidId, {
+    const application = await Bid.findByPk(applicationId, {
       include: [
         { model: Job, as: 'job' },
         { model: User, as: 'writer', attributes: ['name', 'email'] },
       ],
     });
-    if (!bid) {
-      return res.status(404).json({ error: 'Bid not found' });
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found' });
     }
 
-    if (bid.status !== 'pending') {
-      return res.status(400).json({ error: 'Only pending bids can be assigned' });
+    if (application.status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending applications can be assigned' });
     }
 
-    const job = await Job.findByPk(bid.job_id);
+    const job = await Job.findByPk(application.job_id);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
     await Bid.update(
       { status: 'accepted', updated_at: new Date() },
-      { where: { id: bidId } }
+      { where: { id: applicationId } }
     );
 
     await Job.update(
-      { status: 'assigned', writer_id: bid.writer_id, updated_at: new Date() },
-      { where: { id: bid.job_id } }
+      { status: 'assigned', writer_id: application.writer_id, updated_at: new Date() },
+      { where: { id: application.job_id } }
     );
 
     await Bid.update(
       { status: 'rejected', updated_at: new Date() },
-      { where: { job_id: bid.job_id, id: { [Op.ne]: bidId }, status: 'pending' } }
+      { where: { job_id: application.job_id, id: { [Op.ne]: applicationId }, status: 'pending' } }
     );
 
-    let updatedJob = await Job.findByPk(bid.job_id, {
+    let updatedJob = await Job.findByPk(application.job_id, {
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
         { model: User, as: 'writer', attributes: ['name', 'email'] },
@@ -424,7 +370,7 @@ app.patch('/api/superadmin/bids/:bidId/assign', authenticateToken, isSuperadmin,
 
     res.json({ message: 'Writer assigned successfully', job: updatedJob });
   } catch (error) {
-    console.error('Error in /api/superadmin/bids/:bidId/assign:', error);
+    console.error('Error in /api/superadmin/applications/:applicationId/assign:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
@@ -439,11 +385,24 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { title, description, client_bid_amount, expected_return_date } = req.body;
+    const {
+      description,
+      client_bid_amount,
+      expected_return_date,
+      urgency,
+      assignment_type,
+      subject,
+      quantity,
+      spacing,
+      level,
+      language,
+      citation_style,
+      number_of_sources,
+    } = req.body;
     let pdfUrl = null;
 
-    if (!title || !description) {
-      return res.status(400).json({ error: 'Title and description are required' });
+    if (!description) {
+      return res.status(400).json({ error: 'Description is required' });
     }
     const bidAmount = parseFloat(client_bid_amount);
     if (isNaN(bidAmount) || bidAmount <= 0) {
@@ -452,11 +411,20 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
     if (!expected_return_date || isNaN(Date.parse(expected_return_date))) {
       return res.status(400).json({ error: 'Valid expected return date is required.' });
     }
+    if (!quantity || parseFloat(quantity) <= 0) {
+      return res.status(400).json({ error: 'Invalid quantity. Must be greater than 0.' });
+    }
+    if (!urgency || !assignment_type || !spacing || !level || !language || !citation_style) {
+      return res.status(400).json({ error: 'All job details are required.' });
+    }
+    if (number_of_sources && (isNaN(number_of_sources) || parseInt(number_of_sources) < 0)) {
+      return res.status(400).json({ error: 'Invalid number of sources.' });
+    }
 
     const recentJob = await Job.findOne({
       where: {
         client_id: req.user.id,
-        title,
+        description,
         created_at: {
           [Op.gte]: new Date(Date.now() - 5 * 60 * 1000),
         },
@@ -483,14 +451,25 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       pdfUrl = `${process.env.SUPABASE_URL}/storage/v1/object/job-pdfs/${fileName}`;
     }
 
+    const writerShare = bidAmount / 3; // Writer gets 1/3 of the budget
+
     const job = await Job.create({
-      title,
       description,
       client_bid_amount: bidAmount,
+      writer_share: writerShare,
       pdf_url: pdfUrl,
       client_id: req.user.id,
       status: 'in_progress',
       expected_return_date: new Date(expected_return_date),
+      urgency,
+      assignment_type,
+      subject,
+      quantity: parseFloat(quantity),
+      spacing,
+      level,
+      language,
+      citation_style,
+      number_of_sources: parseInt(number_of_sources) || 0,
     });
 
     let updatedJob = await Job.findByPk(job.id, {
@@ -547,7 +526,7 @@ app.get('/api/jobs/completed', authenticateToken, isClient, async (req, res) => 
 app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, expected_return_date } = req.body;
+    const { description, expected_return_date } = req.body;
     let pdfUrl = undefined;
 
     const job = await Job.findOne({ where: { id, client_id: req.user.id } });
@@ -582,7 +561,6 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
     }
 
     const updatedData = {};
-    if (title) updatedData.title = title;
     if (description) updatedData.description = description;
     if (expected_return_date && !isNaN(Date.parse(expected_return_date))) {
       updatedData.expected_return_date = new Date(expected_return_date);
@@ -638,18 +616,18 @@ app.delete('/api/jobs/:id', authenticateToken, isClient, async (req, res) => {
 app.get('/api/jobs/available', authenticateToken, isWriter, async (req, res) => {
   try {
     let jobs = await Job.findAll({
-      where: { status: 'in_progress', admin_bid_amount: { [Op.ne]: null } },
+      where: { status: 'in_progress' },
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
       order: [['created_at', 'DESC']],
     });
 
-    const existingBids = await Bid.findAll({
+    const existingApplications = await Bid.findAll({
       where: { writer_id: req.user.id },
       attributes: ['job_id'],
     });
-    const bidJobIds = existingBids.map((bid) => bid.job_id);
+    const applicationJobIds = existingApplications.map((application) => application.job_id);
 
-    jobs = jobs.filter((job) => !bidJobIds.includes(job.id));
+    jobs = jobs.filter((job) => !applicationJobIds.includes(job.id));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
 
@@ -660,17 +638,12 @@ app.get('/api/jobs/available', authenticateToken, isWriter, async (req, res) => 
   }
 });
 
-app.post('/api/jobs/bid', authenticateToken, isWriter, async (req, res) => {
+app.post('/api/jobs/apply', authenticateToken, isWriter, async (req, res) => {
   try {
-    const { job_id, amount } = req.body;
+    const { job_id } = req.body;
 
-    if (!job_id || !amount) {
-      return res.status(400).json({ error: 'Job ID and amount are required' });
-    }
-
-    const bidAmount = parseFloat(amount);
-    if (isNaN(bidAmount) || bidAmount <= 0) {
-      return res.status(400).json({ error: 'Invalid bid amount. Must be a number greater than 0.' });
+    if (!job_id) {
+      return res.status(400).json({ error: 'Job ID is required' });
     }
 
     const job = await Job.findByPk(job_id);
@@ -678,21 +651,20 @@ app.post('/api/jobs/bid', authenticateToken, isWriter, async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    if (job.status !== 'in_progress' || !job.admin_bid_amount) {
-      return res.status(400).json({ error: 'Job not available for bidding' });
+    if (job.status !== 'in_progress') {
+      return res.status(400).json({ error: 'Job not available for application' });
     }
 
-    const existingBid = await Bid.findOne({
+    const existingApplication = await Bid.findOne({
       where: { job_id, writer_id: req.user.id },
     });
-    if (existingBid) {
-      return res.status(400).json({ error: 'You have already bid on this job' });
+    if (existingApplication) {
+      return res.status(400).json({ error: 'You have already applied for this job' });
     }
 
-    const bid = await Bid.create({
+    const application = await Bid.create({
       job_id,
       writer_id: req.user.id,
-      amount: bidAmount,
       status: 'pending',
     });
 
@@ -703,16 +675,16 @@ app.post('/api/jobs/bid', authenticateToken, isWriter, async (req, res) => {
     updatedJob = await updateJobStatus(updatedJob);
     updatedJob = (await addSignedUrls([updatedJob], req.token))[0];
 
-    res.json({ message: 'Bid placed successfully', bid, job: updatedJob });
+    res.json({ message: 'Application submitted successfully', application, job: updatedJob });
   } catch (error) {
-    console.error('Error in /api/jobs/bid:', error);
+    console.error('Error in /api/jobs/apply:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 
 app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
   try {
-    const bids = await Bid.findAll({
+    const applications = await Bid.findAll({
       where: { writer_id: req.user.id, status: 'accepted' },
       include: [
         {
@@ -730,7 +702,7 @@ app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
         },
       ],
     });
-    let jobs = bids.map((bid) => bid.job).filter((job) => job !== null);
+    let jobs = applications.map((application) => application.job).filter((job) => job !== null);
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
     console.log('Assigned jobs sent:', JSON.stringify(jobs, null, 2));
@@ -743,7 +715,7 @@ app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
 
 app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, res) => {
   try {
-    const bids = await Bid.findAll({
+    const applications = await Bid.findAll({
       where: { writer_id: req.user.id, status: 'accepted' },
       include: [
         {
@@ -754,7 +726,7 @@ app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, r
         },
       ],
     });
-    let jobs = bids.map((bid) => bid.job).filter((job) => job !== null);
+    let jobs = applications.map((application) => application.job).filter((job) => job !== null);
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs, req.token);
     res.json(jobs);

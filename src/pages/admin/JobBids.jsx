@@ -10,18 +10,18 @@ function JobBids() {
   const [loading, setLoading] = useState(false);
   const [assigningBidId, setAssigningBidId] = useState(null);
 
-  // Fetch jobs with pending bids
+  // Fetch jobs with pending applications
   const fetchJobsWithBids = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.get('http://localhost:5000/api/superadmin/jobs/with-bids', {
+      const response = await axios.get('http://localhost:5000/api/superadmin/jobs/with-applications', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Jobs with pending bids response:', response.data); // Debug log
+      console.log('Jobs with pending applications response:', response.data); // Debug log
       setJobs(response.data);
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Failed to fetch jobs with bids';
+      const errorMsg = err.response?.data?.error || 'Failed to fetch jobs with applications';
       console.error('Fetch error:', err);
       setError(errorMsg);
       toast.error(errorMsg);
@@ -41,7 +41,7 @@ function JobBids() {
     return () => clearInterval(interval);
   }, [fetchJobsWithBids]);
 
-  // Assign writer to a bid
+  // Assign writer to a job
   const handleAssignWriter = async (bidId, jobId, writerName) => {
     if (
       !window.confirm(
@@ -53,7 +53,7 @@ function JobBids() {
     setAssigningBidId(bidId);
     try {
       await axios.patch(
-        `http://localhost:5000/api/superadmin/bids/${bidId}/assign`,
+        `http://localhost:5000/api/superadmin/applications/${bidId}/assign`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -63,8 +63,8 @@ function JobBids() {
       const errorMsg = err.response?.data?.error || 'Failed to assign writer';
       toast.error(errorMsg);
       if (
-        errorMsg.includes('Bid not found') ||
-        errorMsg.includes('Only pending bids') ||
+        errorMsg.includes('Application not found') ||
+        errorMsg.includes('Only pending applications') ||
         errorMsg.includes('Invalid token')
       ) {
         fetchJobsWithBids();
@@ -75,7 +75,7 @@ function JobBids() {
   };
 
   // Download PDF
-  const handleDownloadPDF = async (pdfUrl, title) => {
+  const handleDownloadPDF = async (pdfUrl, description) => {
     try {
       const response = await axios.get(pdfUrl, {
         responseType: 'blob',
@@ -83,7 +83,7 @@ function JobBids() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${title.replace(/\s+/g, '_')}.pdf`);
+      link.setAttribute('download', `${description.slice(0, 20).replace(/\s+/g, '_')}.pdf`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -94,8 +94,8 @@ function JobBids() {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md max-w-7xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6 text-dark-green">Jobs with Pending Bids</h2>
+    <div className="bg-white p-6 rounded-lg shadow-md max-w-10xl mx-auto">
+      <h2 className="text-2xl font-bold mb-6 text-dark-green">Jobs with Pending Applications</h2>
 
       {error && (
         <p className="text-red-500 mb-4 text-center" role="alert">
@@ -116,7 +116,7 @@ function JobBids() {
           ))}
         </div>
       ) : jobs.length === 0 ? (
-        <p className="text-gray-500 text-center">No jobs with pending bids.</p>
+        <p className="text-gray-500 text-center">No jobs with pending applications.</p>
       ) : (
         <div className="space-y-6">
           {jobs.map((job) => (
@@ -127,7 +127,7 @@ function JobBids() {
               aria-labelledby={`job-${job.id}-title`}
             >
               <h3 id={`job-${job.id}-title`} className="text-lg font-semibold text-dark-green mb-2">
-                {job.title || 'Untitled Job'}
+                {job.description.slice(0, 50) || 'Untitled Job'}
               </h3>
               <p className="text-gray-600 mb-2 line-clamp-3">{job.description || 'No description'}</p>
               <p className="text-gray-500 mb-1">
@@ -137,7 +137,7 @@ function JobBids() {
                 Client Budget: ${job.client_bid_amount ? parseFloat(job.client_bid_amount).toFixed(2) : 'N/A'}
               </p>
               <p className="text-gray-500 mb-1">
-                Admin Bid: ${job.admin_bid_amount ? parseFloat(job.admin_bid_amount).toFixed(2) : 'Not set'}
+                Writer Earnings: ${job.writer_share ? parseFloat(job.writer_share).toFixed(2) : 'N/A'}
               </p>
               <p className="text-gray-500 mb-1">
                 Writer Due:{' '}
@@ -151,9 +151,9 @@ function JobBids() {
               </p>
               {job.pdf_url ? (
                 <button
-                  onClick={() => handleDownloadPDF(job.pdf_url, job.title || 'document')}
+                  onClick={() => handleDownloadPDF(job.pdf_url, job.description || 'document')}
                   className="text-lime-green hover:underline mb-2 inline-flex items-center text-sm"
-                  aria-label={`Download PDF for ${job.title || 'document'}`}
+                  aria-label={`Download PDF for ${job.description.slice(0, 20) || 'document'}`}
                 >
                   <svg
                     className="w-4 h-4 mr-1"
@@ -175,7 +175,7 @@ function JobBids() {
               ) : (
                 <p className="text-gray-500 italic mb-2 text-sm">No PDF Available</p>
               )}
-              <h4 className="text-md font-semibold mt-4 mb-2">Bids</h4>
+              <h4 className="text-md font-semibold mt-4 mb-2">Applications</h4>
               {job.bids && job.bids.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse border border-gray-200">
@@ -183,9 +183,6 @@ function JobBids() {
                       <tr className="bg-dark-green text-white">
                         <th className="border border-gray-200 p-3 text-left text-sm font-semibold">
                           Writer
-                        </th>
-                        <th className="border border-gray-200 p-3 text-left text-sm font-semibold">
-                          Bid Amount ($)
                         </th>
                         <th className="border border-gray-200 p-3 text-left text-sm font-semibold">
                           Status
@@ -201,9 +198,6 @@ function JobBids() {
                           <td className="border border-gray-200 p-3 text-sm">
                             {bid.writer?.name || 'Unknown'} ({bid.writer?.email || 'N/A'})
                           </td>
-                          <td className="border border-gray-200 p-3 text-sm">
-                            ${bid.amount ? parseFloat(bid.amount).toFixed(2) : 'N/A'}
-                          </td>
                           <td className="border border-gray-200 p-3 text-sm capitalize">
                             {bid.status || 'N/A'}
                           </td>
@@ -217,7 +211,7 @@ function JobBids() {
                                   assigningBidId === bid.id ? 'opacity-50 cursor-not-allowed' : ''
                                 }`}
                                 disabled={assigningBidId === bid.id}
-                                aria-label={`Assign ${bid.writer?.name || 'writer'} to job ${job.title || 'job'}`}
+                                aria-label={`Assign ${bid.writer?.name || 'writer'} to job ${job.description.slice(0, 20) || 'job'}`}
                               >
                                 {assigningBidId === bid.id ? 'Assigning...' : 'Assign Writer'}
                               </button>
@@ -229,7 +223,7 @@ function JobBids() {
                   </table>
                 </div>
               ) : (
-                <p className="text-gray-500 text-sm">No pending bids for this job.</p>
+                <p className="text-gray-500 text-sm">No pending applications for this job.</p>
               )}
             </div>
           ))}
