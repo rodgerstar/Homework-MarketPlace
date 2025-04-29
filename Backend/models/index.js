@@ -60,7 +60,7 @@ const Job = sequelize.define('Job', {
     type: DataTypes.TEXT,
     allowNull: false,
   },
-  pdf_url: {
+  file_url: { // Renamed from pdf_url to file_url
     type: DataTypes.STRING,
     allowNull: true,
   },
@@ -72,6 +72,10 @@ const Job = sequelize.define('Job', {
   client_bid_amount: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
+  },
+  writer_share: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false, // Changed to allowNull: false since it's calculated and required
   },
   expected_return_date: {
     type: DataTypes.DATE,
@@ -126,10 +130,6 @@ const Job = sequelize.define('Job', {
     allowNull: true,
     defaultValue: 0,
   },
-  writer_share: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true,
-  },
 }, { tableName: 'jobs', timestamps: false });
 
 const Bid = sequelize.define('Bid', {
@@ -154,6 +154,10 @@ const Bid = sequelize.define('Bid', {
     defaultValue: 'pending',
   },
   created_at: {
+    type: DataTypes.DATE,
+    defaultValue: Sequelize.NOW,
+  },
+  updated_at: { // Added updated_at field to track bid status changes
     type: DataTypes.DATE,
     defaultValue: Sequelize.NOW,
   },

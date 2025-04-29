@@ -30,7 +30,7 @@ function PostJob() {
     'Research Paper': { rate: 15, unit: 'page' },
     'Annotated Bibliography': { rate: 15, unit: 'page' },
     Reply: { rate: 15, unit: 'page' },
-    'PowerPoint Presentation': { rate: 9, unit: 'slide' },
+    'PowerPoint Presentation': { rate: 7, unit: 'slide' },
     Calculation: { rate: 3, unit: 'question' },
     'Question and Answer': { rate: 1.5, unit: 'question' },
   };
@@ -54,7 +54,7 @@ function PostJob() {
     setCalculatedBudget(budget);
 
     if (unit === 'page') {
-      const wordsPerPage = formData.spacing === 'Double' ? 275 : 250;
+      const wordsPerPage = formData.spacing === 'Double' ? 275 : 550;
       setWordCount(quantity * wordsPerPage);
     } else {
       setWordCount(0);
@@ -102,12 +102,6 @@ function PostJob() {
     }
     if (formData.file && formData.file.size > 10 * 1024 * 1024) {
       toast.error('File size exceeds 10MB limit');
-      setLoading(false);
-      setIsSubmitting(false);
-      return;
-    }
-    if (formData.file && formData.file.type !== 'application/pdf') {
-      toast.error('Only PDF files are allowed');
       setLoading(false);
       setIsSubmitting(false);
       return;
@@ -172,11 +166,11 @@ function PostJob() {
   };
 
   return (
-    <div className="bg-white p-8 rounded-lg shadow-lg max-w-2xl mx-auto">
+    <div className="bg-white p-8 rounded-lg shadow-lg max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold mb-8 text-dark-green">Post a New Job</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Type of Work</label>
             <select
               value={formData.assignmentType}
@@ -193,7 +187,7 @@ function PostJob() {
               <option value="Question and Answer">Question and Answer</option>
             </select>
           </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Number of {pricing[formData.assignmentType]?.unit === 'page' ? 'Pages' : pricing[formData.assignmentType]?.unit === 'slide' ? 'Slides' : 'Questions'}
             </label>
@@ -211,9 +205,7 @@ function PostJob() {
               <p className="text-sm text-gray-500 mt-1">Approximately {wordCount} words</p>
             )}
           </div>
-        </div>
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Spacing</label>
             <select
               value={formData.spacing}
@@ -225,7 +217,9 @@ function PostJob() {
               <option value="Double">Double</option>
             </select>
           </div>
-          <div className="flex-1 min-w-[200px]">
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Academic Level</label>
             <select
               value={formData.level}
@@ -239,9 +233,7 @@ function PostJob() {
               <option value="PhD">PhD</option>
             </select>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
             <select
               value={formData.language}
@@ -253,7 +245,7 @@ function PostJob() {
               <option value="English (UK)">English (UK)</option>
             </select>
           </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Citation Style</label>
             <select
               value={formData.citationStyle}
@@ -269,7 +261,7 @@ function PostJob() {
           </div>
         </div>
         <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Number of Sources</label>
             <input
               type="number"
@@ -280,7 +272,7 @@ function PostJob() {
               disabled={loading}
             />
           </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[150px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
             <input
               type="text"
@@ -291,6 +283,30 @@ function PostJob() {
               disabled={loading}
             />
           </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Urgency</label>
+            <select
+              value={formData.urgency}
+              onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
+              className="p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
+              disabled={loading}
+            >
+              <option value="Normal">Normal (7 days)</option>
+              <option value="Urgent">Urgent (3 days)</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Expected Return Date</label>
+          <input
+            type="date"
+            value={formData.expected_return_date}
+            onChange={(e) => setFormData({ ...formData, expected_return_date: e.target.value })}
+            className="p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
+            required
+            min={new Date().toISOString().split('T')[0]}
+            disabled={loading}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -303,32 +319,6 @@ function PostJob() {
             disabled={loading}
           />
         </div>
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Urgency</label>
-            <select
-              value={formData.urgency}
-              onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
-              className="p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
-              disabled={loading}
-            >
-              <option value="Normal">Normal (7 days)</option>
-              <option value="Urgent">Urgent (3 days)</option>
-            </select>
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expected Return Date</label>
-            <input
-              type="date"
-              value={formData.expected_return_date}
-              onChange={(e) => setFormData({ ...formData, expected_return_date: e.target.value })}
-              className="p-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-green"
-              required
-              min={new Date().toISOString().split('T')[0]}
-              disabled={loading}
-            />
-          </div>
-        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Calculated Budget ($)</label>
           <input
@@ -339,10 +329,10 @@ function PostJob() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Upload PDF (optional, max 10MB)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Upload File (optional, max 10MB)</label>
           <input
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={(e) => setFormData({ ...formData, file: e.target.files[0] })}
             className="p-2 w-full border rounded-md"
             disabled={loading}
