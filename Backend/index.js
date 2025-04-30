@@ -61,27 +61,27 @@ const isWriter = (req, res, next) => {
 
 // Helper function to add signed URLs to jobs
 const addSignedUrls = async (jobs) => {
-  // Use the service role key for generating signed URLs
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
   const jobsWithSignedUrls = await Promise.all(
     jobs.map(async (job) => {
-      if (job.file_url) {
-        const fileName = job.file_url.split('/').pop();
+      // Convert Sequelize instance to plain object to avoid mutating the instance directly
+      const jobData = job.get ? job.get({ plain: true }) : job;
+      if (jobData.file_url) {
+        const fileName = jobData.file_url.split('/').pop();
         const { data, error } = await supabase.storage
           .from('job-files')
           .createSignedUrl(fileName, 3600);
 
         if (error) {
           console.error('Error generating signed URL:', error);
-          // Preserve the original file_url instead of setting to null
-          console.log('Preserving original file_url:', job.file_url);
+          console.log('Preserving original file_url:', jobData.file_url);
         } else {
-          job.file_url = data.signedUrl;
-          console.log('Generated signed URL:', job.file_url);
+          jobData.file_url = data.signedUrl;
+          console.log('Generated signed URL:', jobData.file_url);
         }
       }
-      return job;
+      return jobData; // Return the plain object with file_extension included
     })
   );
 
@@ -244,7 +244,7 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
 
     console.log('Pending jobs:', JSON.stringify(jobs, null, 2));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
 
     res.json(jobs);
   } catch (error) {
@@ -274,7 +274,7 @@ app.get('/api/superadmin/jobs/with-applications', authenticateToken, isSuperadmi
 
     console.log('Jobs with pending applications:', JSON.stringify(jobs, null, 2));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
 
     res.json(jobs);
   } catch (error) {
@@ -303,7 +303,7 @@ app.get('/api/superadmin/jobs/:jobId/applications', authenticateToken, isSuperad
     }
 
     job = await updateJobStatus(job);
-    job = (await addSignedUrls([job]))[0]; // Removed req.token
+    job = (await addSignedUrls([job]))[0];
 
     res.json(job);
   } catch (error) {
@@ -358,7 +358,7 @@ app.patch('/api/superadmin/applications/:applicationId/assign', authenticateToke
     });
 
     updatedJob = await updateJobStatus(updatedJob);
-    updatedJob = (await addSignedUrls([updatedJob]))[0]; // Removed req.token
+    updatedJob = (await addSignedUrls([updatedJob]))[0];
 
     res.json({ message: 'Writer assigned successfully', job: updatedJob });
   } catch (error) {
@@ -392,6 +392,7 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       number_of_sources,
     } = req.body;
     let fileUrl = null;
+    let fileExtension = null;
 
     // Validation checks
     if (!description) {
@@ -430,7 +431,7 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
     if (req.file) {
-      console.log('File received:', req.file.originalname, req.file.mimetype); // Debug log
+      console.log('File received:', req.file.originalname, req.file.mimetype);
       const fileName = `${Date.now()}-${req.file.originalname}`;
       const { data, error } = await supabase.storage
         .from('job-files')
@@ -439,15 +440,16 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
         });
 
       if (error) {
-        console.error('Supabase upload error:', error); // Debug log
+        console.error('Supabase upload error:', error);
         throw new Error('Failed to upload file to Supabase Storage: ' + error.message);
       }
 
-      console.log('Supabase upload response:', data); // Debug log
+      console.log('Supabase upload response:', data);
       fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/job-files/${fileName}`;
-      console.log('Constructed fileUrl:', fileUrl); // Debug log
+      fileExtension = req.file.originalname.split('.').pop();
+      console.log('Constructed fileUrl:', fileUrl, 'File extension:', fileExtension);
     } else {
-      console.log('No file uploaded'); // Debug log
+      console.log('No file uploaded');
     }
 
     const writerShare = bidAmount / 3;
@@ -457,6 +459,7 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       client_bid_amount: bidAmount,
       writer_share: writerShare,
       file_url: fileUrl,
+      file_extension: fileExtension,
       client_id: req.user.id,
       status: 'in_progress',
       expected_return_date: new Date(expected_return_date),
@@ -471,16 +474,16 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       number_of_sources: parseInt(number_of_sources) || 0,
     });
 
-    console.log('Job created with file_url:', job.file_url); // Debug log
+    console.log('Job created with file_url:', job.file_url, 'file_extension:', job.file_extension);
 
     let updatedJob = await Job.findByPk(job.id, {
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
     });
 
-    console.log('Fetched job after creation:', updatedJob.file_url); // Debug log
+    console.log('Fetched job after creation:', updatedJob.file_url, updatedJob.file_extension);
 
     updatedJob = await updateJobStatus(updatedJob);
-    updatedJob = (await addSignedUrls([updatedJob]))[0]; // Removed req.token
+    updatedJob = (await addSignedUrls([updatedJob]))[0];
 
     res.json({ message: 'Job posted successfully', job: updatedJob });
   } catch (error) {
@@ -500,7 +503,7 @@ app.get('/api/jobs/posted', authenticateToken, isClient, async (req, res) => {
     });
 
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
 
     res.json(jobs);
   } catch (error) {
@@ -517,7 +520,7 @@ app.get('/api/jobs/completed', authenticateToken, isClient, async (req, res) => 
     });
 
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
 
     res.json(jobs);
   } catch (error) {
@@ -531,6 +534,7 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
     const { id } = req.params;
     const { description, expected_return_date } = req.body;
     let fileUrl = undefined;
+    let fileExtension = undefined;
 
     const job = await Job.findOne({ where: { id, client_id: req.user.id } });
     if (!job) {
@@ -556,6 +560,7 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
       }
 
       fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/job-files/${fileName}`;
+      fileExtension = req.file.originalname.split('.').pop();
 
       if (job.file_url) {
         const fileName = job.file_url.split('/').pop();
@@ -569,6 +574,7 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
       updatedData.expected_return_date = new Date(expected_return_date);
     }
     if (fileUrl !== undefined) updatedData.file_url = fileUrl;
+    if (fileExtension !== undefined) updatedData.file_extension = fileExtension;
     updatedData.updated_at = new Date();
 
     await Job.update(updatedData, { where: { id } });
@@ -578,7 +584,7 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
     });
 
     updatedJob = await updateJobStatus(updatedJob);
-    updatedJob = (await addSignedUrls([updatedJob]))[0]; // Removed req.token
+    updatedJob = (await addSignedUrls([updatedJob]))[0];
 
     res.json({ message: 'Job updated successfully', job: updatedJob });
   } catch (error) {
@@ -632,7 +638,7 @@ app.get('/api/jobs/available', authenticateToken, isWriter, async (req, res) => 
 
     jobs = jobs.filter((job) => !applicationJobIds.includes(job.id));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
 
     res.json(jobs);
   } catch (error) {
@@ -676,7 +682,7 @@ app.post('/api/jobs/apply', authenticateToken, isWriter, async (req, res) => {
     });
 
     updatedJob = await updateJobStatus(updatedJob);
-    updatedJob = (await addSignedUrls([updatedJob]))[0]; // Removed req.token
+    updatedJob = (await addSignedUrls([updatedJob]))[0];
 
     res.json({ message: 'Application submitted successfully', application, job: updatedJob });
   } catch (error) {
@@ -707,7 +713,7 @@ app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
     });
     let jobs = applications.map((application) => application.job).filter((job) => job !== null);
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
     console.log('Assigned jobs sent:', JSON.stringify(jobs, null, 2));
     res.json(jobs);
   } catch (error) {
@@ -731,7 +737,7 @@ app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, r
     });
     let jobs = applications.map((application) => application.job).filter((job) => job !== null);
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
-    jobs = await addSignedUrls(jobs); // Removed req.token
+    jobs = await addSignedUrls(jobs);
     res.json(jobs);
   } catch (error) {
     console.error('Error in /api/jobs/writer/completed:', error);

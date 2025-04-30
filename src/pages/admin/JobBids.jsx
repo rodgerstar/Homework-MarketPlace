@@ -10,7 +10,6 @@ function JobBids() {
   const [loading, setLoading] = useState(false);
   const [assigningBidId, setAssigningBidId] = useState(null);
 
-  // Fetch jobs with pending applications
   const fetchJobsWithBids = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -18,7 +17,7 @@ function JobBids() {
       const response = await axios.get('http://localhost:5000/api/superadmin/jobs/with-applications', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Jobs with pending applications response:', response.data); // Debug log
+      console.log('Jobs with pending applications response:', response.data);
       setJobs(response.data);
     } catch (err) {
       const errorMsg = err.response?.data?.error || 'Failed to fetch jobs with applications';
@@ -30,7 +29,6 @@ function JobBids() {
     }
   }, [token]);
 
-  // Initial fetch and polling
   useEffect(() => {
     fetchJobsWithBids();
     const interval = setInterval(() => {
@@ -41,7 +39,6 @@ function JobBids() {
     return () => clearInterval(interval);
   }, [fetchJobsWithBids]);
 
-  // Assign writer to a job
   const handleAssignWriter = async (bidId, jobId, writerName) => {
     if (
       !window.confirm(
@@ -74,8 +71,7 @@ function JobBids() {
     }
   };
 
-  // Download File
-  const handleDownloadFile = async (fileUrl, description) => {
+  const handleDownloadFile = async (fileUrl, description, fileExtension) => {
     try {
       const response = await axios.get(fileUrl, {
         responseType: 'blob',
@@ -84,9 +80,7 @@ function JobBids() {
       const link = document.createElement('a');
       link.href = url;
 
-      // Extract file extension from the fileUrl, or default to a generic name
-      const fileName = fileUrl.split('/').pop();
-      const extension = fileName.split('.').pop() || 'file'; // Default to 'file' if no extension
+      const extension = fileExtension || 'file';
       const sanitizedDescription = (description || 'document').slice(0, 20).replace(/\s+/g, '_');
       link.setAttribute('download', `${sanitizedDescription}.${extension}`);
 
@@ -157,7 +151,7 @@ function JobBids() {
               </p>
               {job.file_url ? (
                 <button
-                  onClick={() => handleDownloadFile(job.file_url, job.description)}
+                  onClick={() => handleDownloadFile(job.file_url, job.description, job.file_extension)}
                   className="text-lime-green hover:underline mb-2 inline-flex items-center text-sm"
                   aria-label={`Download file for ${job.description.slice(0, 20) || 'document'}`}
                 >

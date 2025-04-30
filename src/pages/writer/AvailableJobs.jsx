@@ -28,7 +28,6 @@ function AvailableJobs() {
 
   useEffect(() => {
     fetchJobs();
-    // Optional: Poll for updates every 30 seconds to avoid stale jobs
     const interval = setInterval(fetchJobs, 30000);
     return () => clearInterval(interval);
   }, [token]);
@@ -53,13 +52,12 @@ function AvailableJobs() {
       const errorMsg = err.response?.data?.error || 'Failed to apply for job';
       toast.error(errorMsg);
       if (errorMsg.includes('Job not found') || errorMsg.includes('Invalid job ID')) {
-        // Refresh jobs if the job is no longer valid
         fetchJobs();
       }
     }
   };
 
-  const handleDownloadFile = async (fileUrl, description) => {
+  const handleDownloadFile = async (fileUrl, description, fileExtension) => {
     try {
       const response = await axios.get(fileUrl, {
         responseType: 'blob',
@@ -68,9 +66,7 @@ function AvailableJobs() {
       const link = document.createElement('a');
       link.href = url;
 
-      // Extract file extension from the fileUrl, or default to a generic name
-      const fileName = fileUrl.split('/').pop();
-      const extension = fileName.split('.').pop() || 'file'; // Default to 'file' if no extension
+      const extension = fileExtension || 'file';
       const sanitizedDescription = description.slice(0, 20).replace(/\s+/g, '_');
       link.setAttribute('download', `${sanitizedDescription}.${extension}`);
 
@@ -148,7 +144,7 @@ function AvailableJobs() {
                 </p>
                 {job.file_url && (
                   <button
-                    onClick={() => handleDownloadFile(job.file_url, job.description)}
+                    onClick={() => handleDownloadFile(job.file_url, job.description, job.file_extension)}
                     className="inline-flex items-center px-4 py-2 bg-dark-green text-white text-sm font-medium rounded-md hover:bg-lime-green transition-colors duration-200 shadow-sm"
                   >
                     <svg

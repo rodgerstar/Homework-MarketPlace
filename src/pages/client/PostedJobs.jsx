@@ -30,7 +30,7 @@ function PostedJobs() {
     fetchJobs();
   }, [token]);
 
-  const handleDownloadFile = async (fileUrl, description) => {
+  const handleDownloadFile = async (fileUrl, description, fileExtension) => {
     try {
       const response = await axios.get(fileUrl, {
         responseType: 'blob',
@@ -38,7 +38,11 @@ function PostedJobs() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${description?.slice(0, 20)?.replace(/\s+/g, '_') || 'file'}_file`);
+
+      const extension = fileExtension || 'file';
+      const sanitizedDescription = description.slice(0, 20).replace(/\s+/g, '_');
+      link.setAttribute('download', `${sanitizedDescription}.${extension}`);
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -222,7 +226,7 @@ function PostedJobs() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {job.file_url ? (
                       <button
-                        onClick={() => handleDownloadFile(job.file_url, job.description)}
+                        onClick={() => handleDownloadFile(job.file_url, job.description, job.file_extension)}
                         className="text-lime-green hover:text-lime-700 transition-colors"
                         aria-label={`Download file for ${job.description?.slice(0, 20) || 'document'}`}
                         title="Download File"

@@ -17,10 +17,10 @@ function PendingJobs() {
         const response = await axios.get('http://localhost:5000/api/superadmin/jobs/pending', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        console.log('Fetched pending jobs (no applications):', response.data); // Debugging
+        console.log('Fetched pending jobs (no applications):', response.data);
         setJobs(response.data);
       } catch (err) {
-        console.error('Fetch error:', err.response?.data); // Debugging
+        console.error('Fetch error:', err.response?.data);
         setError(err.response?.data?.error || 'Failed to fetch pending jobs');
         toast.error(err.response?.data?.error || 'Failed to fetch pending jobs');
       } finally {
@@ -30,7 +30,7 @@ function PendingJobs() {
     fetchJobs();
   }, [token]);
 
-  const handleDownloadFile = async (fileUrl, description) => {
+  const handleDownloadFile = async (fileUrl, description, fileExtension) => {
     try {
       const response = await axios.get(fileUrl, {
         responseType: 'blob',
@@ -39,9 +39,7 @@ function PendingJobs() {
       const link = document.createElement('a');
       link.href = url;
 
-      // Extract file extension from the fileUrl, or default to a generic name
-      const fileName = fileUrl.split('/').pop();
-      const extension = fileName.split('.').pop() || 'file'; // Default to 'file' if no extension
+      const extension = fileExtension || 'file';
       const sanitizedDescription = description.slice(0, 20).replace(/\s+/g, '_');
       link.setAttribute('download', `${sanitizedDescription}.${extension}`);
 
@@ -201,7 +199,7 @@ function PendingJobs() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {job.file_url ? (
                       <button
-                        onClick={() => handleDownloadFile(job.file_url, job.description)}
+                        onClick={() => handleDownloadFile(job.file_url, job.description, job.file_extension)}
                         className="text-lime-green hover:text-lime-700 transition-colors"
                         aria-label={`Download file for ${job.description.slice(0, 20) || 'document'}`}
                         title="Download File"
