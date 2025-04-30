@@ -30,21 +30,27 @@ function PendingJobs() {
     fetchJobs();
   }, [token]);
 
-  const handleDownloadPDF = async (pdfUrl, description) => {
+  const handleDownloadFile = async (fileUrl, description) => {
     try {
-      const response = await axios.get(pdfUrl, {
+      const response = await axios.get(fileUrl, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${description.slice(0, 20).replace(/\s+/g, '_')}.pdf`);
+
+      // Extract file extension from the fileUrl, or default to a generic name
+      const fileName = fileUrl.split('/').pop();
+      const extension = fileName.split('.').pop() || 'file'; // Default to 'file' if no extension
+      const sanitizedDescription = description.slice(0, 20).replace(/\s+/g, '_');
+      link.setAttribute('download', `${sanitizedDescription}.${extension}`);
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error('Failed to download PDF');
+      toast.error('Failed to download file. The link may have expired.');
     }
   };
 
@@ -79,7 +85,7 @@ function PendingJobs() {
                   Due Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  PDF
+                  File
                 </th>
               </tr>
             </thead>
@@ -150,7 +156,7 @@ function PendingJobs() {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  PDF
+                  File
                 </th>
               </tr>
             </thead>
@@ -193,12 +199,12 @@ function PendingJobs() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {job.pdf_url ? (
+                    {job.file_url ? (
                       <button
-                        onClick={() => handleDownloadPDF(job.pdf_url, job.description)}
+                        onClick={() => handleDownloadFile(job.file_url, job.description)}
                         className="text-lime-green hover:text-lime-700 transition-colors"
-                        aria-label={`Download PDF for ${job.description.slice(0, 20) || 'document'}`}
-                        title="Download PDF"
+                        aria-label={`Download file for ${job.description.slice(0, 20) || 'document'}`}
+                        title="Download File"
                       >
                         <svg
                           className="w-5 h-5"
@@ -216,8 +222,8 @@ function PendingJobs() {
                         </svg>
                       </button>
                     ) : (
-                      <span className="text-gray-500 italic" aria-label="No PDF available">
-                        No PDF
+                      <span className="text-gray-500 italic" aria-label="No file available">
+                        No File
                       </span>
                     )}
                   </td>

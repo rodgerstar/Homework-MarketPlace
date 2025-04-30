@@ -74,22 +74,28 @@ function JobBids() {
     }
   };
 
-  // Download PDF
-  const handleDownloadPDF = async (pdfUrl, description) => {
+  // Download File
+  const handleDownloadFile = async (fileUrl, description) => {
     try {
-      const response = await axios.get(pdfUrl, {
+      const response = await axios.get(fileUrl, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${description.slice(0, 20).replace(/\s+/g, '_')}.pdf`);
+
+      // Extract file extension from the fileUrl, or default to a generic name
+      const fileName = fileUrl.split('/').pop();
+      const extension = fileName.split('.').pop() || 'file'; // Default to 'file' if no extension
+      const sanitizedDescription = (description || 'document').slice(0, 20).replace(/\s+/g, '_');
+      link.setAttribute('download', `${sanitizedDescription}.${extension}`);
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error('Failed to download PDF. The link may have expired.');
+      toast.error('Failed to download file. The link may have expired.');
     }
   };
 
@@ -149,11 +155,11 @@ function JobBids() {
                     })
                   : 'Not set'}
               </p>
-              {job.pdf_url ? (
+              {job.file_url ? (
                 <button
-                  onClick={() => handleDownloadPDF(job.pdf_url, job.description || 'document')}
+                  onClick={() => handleDownloadFile(job.file_url, job.description)}
                   className="text-lime-green hover:underline mb-2 inline-flex items-center text-sm"
-                  aria-label={`Download PDF for ${job.description.slice(0, 20) || 'document'}`}
+                  aria-label={`Download file for ${job.description.slice(0, 20) || 'document'}`}
                 >
                   <svg
                     className="w-4 h-4 mr-1"
@@ -170,10 +176,10 @@ function JobBids() {
                       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                     ></path>
                   </svg>
-                  Download PDF
+                  Download File
                 </button>
               ) : (
-                <p className="text-gray-500 italic mb-2 text-sm">No PDF Available</p>
+                <p className="text-gray-500 italic mb-2 text-sm">No File Available</p>
               )}
               <h4 className="text-md font-semibold mt-4 mb-2">Applications</h4>
               {job.bids && job.bids.length > 0 ? (

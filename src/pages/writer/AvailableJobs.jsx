@@ -59,21 +59,27 @@ function AvailableJobs() {
     }
   };
 
-  const handleDownloadPDF = async (pdfUrl, description) => {
+  const handleDownloadFile = async (fileUrl, description) => {
     try {
-      const response = await axios.get(pdfUrl, {
+      const response = await axios.get(fileUrl, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${description.slice(0, 20).replace(/\s+/g, '_')}.pdf`);
+
+      // Extract file extension from the fileUrl, or default to a generic name
+      const fileName = fileUrl.split('/').pop();
+      const extension = fileName.split('.').pop() || 'file'; // Default to 'file' if no extension
+      const sanitizedDescription = description.slice(0, 20).replace(/\s+/g, '_');
+      link.setAttribute('download', `${sanitizedDescription}.${extension}`);
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error('Failed to download PDF');
+      toast.error('Failed to download file. The link may have expired.');
     }
   };
 
@@ -123,7 +129,7 @@ function AvailableJobs() {
               <p className="text-gray-600 mb-4 line-clamp-3 min-h-[4.5rem] text-sm">{job.description}</p>
               <div className="mb-4">
                 <p className="text-sm font-medium text-gray-700 mb-2">
-                  {job.pdf_url ? (
+                  {job.file_url ? (
                     <span className="text-dark-green flex items-center">
                       <svg
                         className="w-4 h-4 mr-1 text-lime-green"
@@ -134,15 +140,15 @@ function AvailableJobs() {
                         <path d="M7 9a2 2 0 012-2h2a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"></path>
                         <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5z"></path>
                       </svg>
-                      PDF Available
+                      File Available
                     </span>
                   ) : (
-                    <span className="text-gray-500 italic">No PDF Available</span>
+                    <span className="text-gray-500 italic">No File Available</span>
                   )}
                 </p>
-                {job.pdf_url && (
+                {job.file_url && (
                   <button
-                    onClick={() => handleDownloadPDF(job.pdf_url, job.description)}
+                    onClick={() => handleDownloadFile(job.file_url, job.description)}
                     className="inline-flex items-center px-4 py-2 bg-dark-green text-white text-sm font-medium rounded-md hover:bg-lime-green transition-colors duration-200 shadow-sm"
                   >
                     <svg

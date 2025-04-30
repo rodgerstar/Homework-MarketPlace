@@ -166,7 +166,7 @@ function PostJob() {
   };
 
   return (
-    <div className="bg-white p-8 rounded-lg shadow-lg max-w-4xl mx-auto">
+    <div className="bg-white p-8 rounded-lg shadow-lg max-w-8xl mx-auto">
       <h2 className="text-3xl font-bold mb-8 text-dark-green">Post a New Job</h2>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex flex-wrap gap-4">
@@ -341,7 +341,7 @@ function PostJob() {
         <button
           type="submit"
           disabled={loading || isSubmitting}
-          className="px-4 py-2 bg-dark-green text-white rounded-md hover:bg-lime-green disabled:opacity-50"
+          className="px-4 py-2 bg-dark-green text-white rounded-md hover:bg-lime-green disabled:opacity-50 w-full"
         >
           {loading ? 'Posting...' : 'Post Job'}
         </button>
