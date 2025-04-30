@@ -24,6 +24,7 @@ import SuperadminDashboard from './pages/SuperadminDashboard';
 import PendingJobs from './pages/admin/PendingJobs'; // New superadmin component
 import JobBids from './pages/admin/JobBids'; // New superadmin component
 import AddWriter from "./pages/admin/AddWriter.jsx";
+import AdminSubmissions from "./pages/admin/AdminSubmissions.jsx"
 
 function AppContent() {
   const location = useLocation();
@@ -62,6 +63,7 @@ function AppContent() {
           <Route path="pending-jobs" element={<PendingJobs />} />
           <Route path="job-bids" element={<JobBids />} />
           <Route path="add-writer" element={<AddWriter/>} />
+          <Route path="submissions" element={<AdminSubmissions/>} />
         </Route>
       </Routes>
     </div>

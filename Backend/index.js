@@ -5,7 +5,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
-const { User, Job, Bid } = require('./models');
+const { sequelize, User, Job, Bid, Submission, Testimonial, initializeDatabase } = require('./models');
 const { Op } = require('sequelize');
 
 const app = express();
@@ -65,7 +65,6 @@ const addSignedUrls = async (jobs) => {
 
   const jobsWithSignedUrls = await Promise.all(
     jobs.map(async (job) => {
-      // Convert Sequelize instance to plain object to avoid mutating the instance directly
       const jobData = job.get ? job.get({ plain: true }) : job;
       if (jobData.file_url) {
         const fileName = jobData.file_url.split('/').pop();
@@ -81,7 +80,7 @@ const addSignedUrls = async (jobs) => {
           console.log('Generated signed URL:', jobData.file_url);
         }
       }
-      return jobData; // Return the plain object with file_extension included
+      return jobData;
     })
   );
 
@@ -90,7 +89,7 @@ const addSignedUrls = async (jobs) => {
 
 // Helper function to update job status based on expected_return_date
 const updateJobStatus = async (job) => {
-  if (!job.expected_return_date || job.status === 'completed' || job.status === 'cancelled' || job.status === 'in_progress') {
+  if (!job.expected_return_date || job.status === 'completed' || job.status === 'cancelled' || job.status === 'posted') {
     return job;
   }
 
@@ -137,7 +136,21 @@ const createSuperuser = async () => {
   }
 };
 
-createSuperuser();
+// Initialize database and start server
+const startServer = async () => {
+  try {
+    await initializeDatabase(); // Create tables if they don't exist
+    await createSuperuser(); // Create superadmin if not exist
+    app.listen(5000, () => {
+      console.log('Server running on port 5000');
+    });
+  } catch (error) {
+    console.error('Error starting server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 app.get('/', (req, res) => res.send('Professor Ann Backend'));
 
@@ -195,6 +208,29 @@ app.get('/api/user/role', authenticateToken, async (req, res) => {
   }
 });
 
+// New Profile Endpoint
+app.get('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findOne({
+      where: { id: req.user.id },
+      attributes: ['name', 'role', 'email', 'phone'],
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      name: user.name || 'Unknown',
+      role: user.role,
+      email: user.email,
+      phone: user.phone || 'N/A',
+    });
+  } catch (error) {
+    console.error('Error in /api/user/profile:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.post('/api/superadmin/add-writer', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     const { email, name, password } = req.body;
@@ -228,7 +264,7 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
   try {
     let jobs = await Job.findAll({
       where: {
-        status: 'in_progress',
+        status: 'posted',
       },
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
@@ -258,7 +294,7 @@ app.get('/api/superadmin/jobs/with-applications', authenticateToken, isSuperadmi
   try {
     let jobs = await Job.findAll({
       where: {
-        status: 'in_progress',
+        status: 'posted',
       },
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
@@ -461,7 +497,7 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       file_url: fileUrl,
       file_extension: fileExtension,
       client_id: req.user.id,
-      status: 'in_progress',
+      status: 'posted',
       expected_return_date: new Date(expected_return_date),
       urgency,
       assignment_type,
@@ -541,8 +577,8 @@ app.patch('/api/jobs/:id', authenticateToken, isClient, upload, async (req, res)
       return res.status(404).json({ error: 'Job not found or you do not have permission to edit this job' });
     }
 
-    if (job.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Only in-progress jobs can be edited' });
+    if (job.status !== 'posted') {
+      return res.status(400).json({ error: 'Only posted jobs can be edited' });
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -602,8 +638,8 @@ app.delete('/api/jobs/:id', authenticateToken, isClient, async (req, res) => {
       return res.status(404).json({ error: 'Job not found or you do not have permission to cancel this job' });
     }
 
-    if (job.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Only in-progress jobs can be cancelled' });
+    if (job.status !== 'posted') {
+      return res.status(400).json({ error: 'Only posted jobs can be cancelled' });
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -625,7 +661,7 @@ app.delete('/api/jobs/:id', authenticateToken, isClient, async (req, res) => {
 app.get('/api/jobs/available', authenticateToken, isWriter, async (req, res) => {
   try {
     let jobs = await Job.findAll({
-      where: { status: 'in_progress' },
+      where: { status: 'posted' },
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
       order: [['created_at', 'DESC']],
     });
@@ -660,7 +696,7 @@ app.post('/api/jobs/apply', authenticateToken, isWriter, async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    if (job.status !== 'in_progress') {
+    if (job.status !== 'posted') {
       return res.status(400).json({ error: 'Job not available for application' });
     }
 
@@ -744,5 +780,3 @@ app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, r
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
-
-app.listen(5000, () => console.log('Server running on port 5000'));

@@ -40,22 +40,26 @@ function AssignedJobs() {
     return () => clearInterval(interval);
   }, [fetchJobs]);
 
-  // Download PDF
-  const handleDownloadPDF = async (pdfUrl, title) => {
+  // Download file
+  const handleDownloadFile = async (fileUrl, description, fileExtension) => {
     try {
-      const response = await axios.get(pdfUrl, {
+      const response = await axios.get(fileUrl, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${title.replace(/\s+/g, '_')}_homework.pdf`);
+
+      const extension = fileExtension || 'file';
+      const sanitizedDescription = description.slice(0, 20).replace(/\s+/g, '_');
+      link.setAttribute('download', `${sanitizedDescription}.${extension}`);
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error('Failed to download PDF. The link may have expired.');
+      toast.error('Failed to download file. The link may have expired.');
     }
   };
 
@@ -75,9 +79,6 @@ function AssignedJobs() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Title
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Description
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -86,6 +87,9 @@ function AssignedJobs() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
+                <th className="px-6 py-3 text personally-medium text-gray-500 uppercase tracking-wider">
+                  Your Earnings ($)
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Due Date
                 </th>
@@ -93,7 +97,7 @@ function AssignedJobs() {
                   Assigned On
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  PDF
+                  File
                 </th>
               </tr>
             </thead>
@@ -104,10 +108,10 @@ function AssignedJobs() {
                     <div className="h-6 bg-gray-200 rounded w-3/4 animate-pulse"></div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="h-6 bg-gray-200 rounded w-full animate-pulse"></div>
+                    <div className="h-6 bg-gray-200 rounded w-1/2 animate-pulse"></div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="h-6 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                    <div className="h-6 bg-gray-200 rounded w-1/4 animate-pulse"></div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="h-6 bg-gray-200 rounded w-1/4 animate-pulse"></div>
@@ -137,12 +141,6 @@ function AssignedJobs() {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Title
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
                   Description
                 </th>
                 <th
@@ -161,6 +159,12 @@ function AssignedJobs() {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
+                  Your Earnings ($)
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Due Date
                 </th>
                 <th
@@ -173,18 +177,15 @@ function AssignedJobs() {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  PDF
+                  File
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {jobs.map((job) => (
                 <tr key={job.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-dark-green">{job.title}</div>
-                  </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-600 line-clamp-2">{job.description}</div>
+                    <div className="text-sm text-gray-600 line-clamp-2">{job.description || 'No description'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
@@ -201,8 +202,13 @@ function AssignedJobs() {
                           : 'bg-green-100 text-green-800'
                       }`}
                     >
-                      {job.status}
+                      {job.status || 'Unknown'}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">
+                      ${job.writer_share ? parseFloat(job.writer_share).toFixed(2) : 'N/A'}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
@@ -217,20 +223,22 @@ function AssignedJobs() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
-                      {new Date(job.updated_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
+                      {job.updated_at
+                        ? new Date(job.updated_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })
+                        : 'N/A'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {job.pdf_url ? (
+                    {job.file_url ? (
                       <button
-                        onClick={() => handleDownloadPDF(job.pdf_url, job.title)}
+                        onClick={() => handleDownloadFile(job.file_url, job.description, job.file_extension)}
                         className="text-lime-green hover:text-lime-700 transition-colors"
-                        aria-label={`Download homework PDF for ${job.title}`}
-                        title="Download Homework PDF"
+                        aria-label={`Download file for ${job.description?.slice(0, 20) || 'document'}`}
+                        title="Download File"
                       >
                         <svg
                           className="w-5 h-5"
@@ -248,8 +256,8 @@ function AssignedJobs() {
                         </svg>
                       </button>
                     ) : (
-                      <span className="text-gray-500 italic" aria-label="No PDF available">
-                        No PDF
+                      <span className="text-gray-500 italic" aria-label="No file available">
+                        No File
                       </span>
                     )}
                   </td>

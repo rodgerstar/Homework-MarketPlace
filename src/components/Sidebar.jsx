@@ -33,7 +33,8 @@ function Sidebar({ role, isCollapsed, setIsCollapsed }) {
       { path: '/superadmin', label: 'Dashboard', icon: <DocumentTextIcon /> },
       { path: '/superadmin/add-writer', label: 'Add Writer', icon: <UserPlusIcon /> },
       { path: '/superadmin/pending-jobs', label: 'Pending Jobs', icon: <PendingIcon /> }, // New link for PendingJobs
-      { path: '/superadmin/job-bids', label: 'Job Bids', icon: <GavelIcon /> }, // New link for JobBids
+      { path: '/superadmin/job-bids', label: 'Job Bids', icon: <GavelIcon /> },
+      { path: '/superadmin/submissions', label: 'submissions', icon: <GavelIcon /> }, // New link for JobBids
     ],
   };
 
