@@ -20,7 +20,7 @@ import WriterCompletedJobs from './pages/writer/CompletedJobs';
 import WritersDashboard from './pages/writer/WritersDashboard.jsx';
 
 // Admin Dashboard Pages
-import SuperadminDashboard from './pages/SuperadminDashboard';
+import SuperadminDashboard from './pages/admin/AdminDashboard.jsx';
 import PendingJobs from './pages/admin/PendingJobs'; // New superadmin component
 import JobBids from './pages/admin/JobBids'; // New superadmin component
 import AddWriter from "./pages/admin/AddWriter.jsx";
@@ -58,7 +58,7 @@ function AppContent() {
         </Route>
 
         {/* Admin Dashboard */}
-        <Route path="/superadmin" element={<DashboardLayout />}>
+        <Route path="/superadmin" element={<DashboardLayout  />}>
           <Route index element={<SuperadminDashboard />} />
           <Route path="pending-jobs" element={<PendingJobs />} />
           <Route path="job-bids" element={<JobBids />} />

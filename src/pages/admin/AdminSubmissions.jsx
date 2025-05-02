@@ -34,7 +34,27 @@ const AdminSubmissions = () => {
         const response = await axios.get('http://localhost:5000/api/superadmin/submissions/pending', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setSubmissions(response.data);
+        console.log('API Response:', response.data); // Debug: Log raw response
+        // Validate and filter submissions
+        const validSubmissions = Array.isArray(response.data)
+          ? response.data.filter(
+              (submission) =>
+                submission &&
+                typeof submission === 'object' &&
+                submission.id &&
+                submission.submitted_at &&
+                submission.job &&
+                submission.writer &&
+                typeof submission.job.description === 'string' &&
+                typeof submission.writer.name === 'string'
+            )
+          : [];
+        console.log('Valid Submissions:', validSubmissions); // Debug: Log filtered submissions
+        setSubmissions(validSubmissions);
+        if (validSubmissions.length === 0 && response.data.length > 0) {
+          setError('Some submissions were invalid and filtered out');
+          toast.warn('Some submissions were invalid and filtered out');
+        }
       } catch (err) {
         const errorMsg = err.response?.data?.error || 'Failed to fetch submissions';
         setError(errorMsg);
@@ -46,10 +66,11 @@ const AdminSubmissions = () => {
     fetchSubmissions();
   }, [token]);
 
-  const handleDownloadFile = async (fileUrl, description, fileExtension) => {
+  const handleDownloadFile = async (signedFileUrl, description, fileExtension) => {
     try {
-      const response = await axios.get(fileUrl, {
+      const response = await axios.get(signedFileUrl, {
         responseType: 'blob',
+        headers: { Authorization: `Bearer ${token}` },
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
@@ -62,6 +83,7 @@ const AdminSubmissions = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
+      console.error('Download error:', err);
       toast.error('Failed to download file');
     }
   };
@@ -95,10 +117,31 @@ const AdminSubmissions = () => {
   };
 
   const columns = [
-    { field: 'jobDescription', headerName: 'Job Description', flex: 1, valueGetter: (params) => params.row.job.description },
-    { field: 'writerName', headerName: 'Writer', flex: 1, valueGetter: (params) => params.row.writer.name },
-    { field: 'submittedAt', headerName: 'Submitted On', flex: 1, valueGetter: (params) =>
-      new Date(params.row.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
+    {
+      field: 'jobDescription',
+      headerName: 'Job Description',
+      flex: 1,
+      valueGetter: (params) => params?.row?.job?.description || 'N/A',
+    },
+    {
+      field: 'writerName',
+      headerName: 'Writer',
+      flex: 1,
+      valueGetter: (params) => params?.row?.writer?.name || 'Unknown',
+    },
+    {
+      field: 'submittedAt',
+      headerName: 'Submitted On',
+      flex: 1,
+      valueGetter: (params) =>
+        params?.row?.submitted_at
+          ? new Date(params.row.submitted_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
+          : 'N/A',
+    },
     {
       field: 'file',
       headerName: 'File',
@@ -106,7 +149,16 @@ const AdminSubmissions = () => {
       renderCell: (params) => (
         <Button
           variant="text"
-          onClick={() => handleDownloadFile(params.row.signed_file_url, params.row.job.description, params.row.file_extension)}
+          sx={{ color: blue[500] }}
+          onClick={() =>
+            params?.row?.signed_file_url &&
+            handleDownloadFile(
+              params.row.signed_file_url,
+              params.row.job?.description || 'submission',
+              params.row.file_extension
+            )
+          }
+          disabled={!params?.row?.signed_file_url}
         >
           Download
         </Button>
@@ -120,7 +172,13 @@ const AdminSubmissions = () => {
         <Button
           variant="contained"
           size="small"
-          onClick={() => handleOpenReviewDialog(params.row)}
+          sx={{
+            bgcolor: blue[500],
+            color: 'white',
+            '&:hover': { bgcolor: blue[700] },
+          }}
+          onClick={() => params?.row && handleOpenReviewDialog(params.row)}
+          disabled={!params?.row}
         >
           Review
         </Button>
@@ -149,7 +207,7 @@ const AdminSubmissions = () => {
       )}
 
       {loading ? (
-        <Box sx={{ height: 300, bgcolor: '#F7F9FC', borderRadius: '8px', p: 2 }}>
+        <Box sx={{ height: 400, bgcolor: '#F7F9FC', borderRadius: '8px', p: 2 }}>
           <div className="h-4 bg-gray-200 rounded w-full mb-2 animate-pulse"></div>
           {[...Array(5)].map((_, index) => (
             <div key={index} className="h-10 bg-gray-200 rounded w-full mb-1 animate-pulse"></div>
@@ -166,6 +224,7 @@ const AdminSubmissions = () => {
               <DataGrid
                 rows={submissions}
                 columns={columns}
+                getRowId={(row) => row.id} // Ensure unique row IDs
                 pageSize={5}
                 rowsPerPageOptions={[5]}
                 disableRowSelectionOnClick
@@ -184,15 +243,23 @@ const AdminSubmissions = () => {
         <DialogTitle>Review Submission</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            Job: {selectedSubmission?.job.description}
+            Job: {selectedSubmission?.job?.description || 'N/A'}
           </Typography>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            Writer: {selectedSubmission?.writer.name}
+            Writer: {selectedSubmission?.writer?.name || 'Unknown'}
           </Typography>
           <Button
             variant="outlined"
-            onClick={() => handleDownloadFile(selectedSubmission?.signed_file_url, selectedSubmission?.job.description, selectedSubmission?.file_extension)}
+            onClick={() =>
+              selectedSubmission?.signed_file_url &&
+              handleDownloadFile(
+                selectedSubmission.signed_file_url,
+                selectedSubmission.job?.description || 'submission',
+                selectedSubmission.file_extension
+              )
+            }
             sx={{ mb: 2 }}
+            disabled={!selectedSubmission?.signed_file_url}
           >
             Download Submission
           </Button>
@@ -208,10 +275,18 @@ const AdminSubmissions = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseReviewDialog}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={() => handleReviewSubmission('rejected')}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: red[500], '&:hover': { bgcolor: red[700] } }}
+            onClick={() => handleReviewSubmission('rejected')}
+          >
             Reject
           </Button>
-          <Button variant="contained" color="success" onClick={() => handleReviewSubmission('approved')}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: green[500], '&:hover': { bgcolor: green[700] } }}
+            onClick={() => handleReviewSubmission('approved')}
+          >
             Approve
           </Button>
         </DialogActions>

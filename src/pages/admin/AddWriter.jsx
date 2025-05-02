@@ -1,9 +1,22 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  CircularProgress,
+} from '@mui/material';
+import { red, green } from '@mui/material/colors';
 import axios from 'axios';
-import { useAuth } from '../../context/AuthContext.jsx';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'react-toastify';
 
-function AddWriter() {
+const AddWriter = () => {
+  const { token, userRole } = useAuth();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',
     name: '',
@@ -11,10 +24,8 @@ function AddWriter() {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const { token, userRole } = useAuth();
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  // Redirect if not superadmin
   useEffect(() => {
     if (!token || userRole !== 'admin') {
       navigate('/login');
@@ -29,6 +40,8 @@ function AddWriter() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setLoading(true);
+
     try {
       const response = await axios.post(
         'http://localhost:5000/api/superadmin/add-writer',
@@ -39,61 +52,104 @@ function AddWriter() {
       );
       setSuccess(response.data.message);
       setFormData({ email: '', name: '', password: '' });
+      toast.success('Writer added successfully');
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong');
+      const errorMsg = err.response?.data?.error || 'Failed to add writer';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-dark-green text-white flex items-center justify-center">
-      <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h1 className="text-3xl font-bold mb-6 text-center">Superadmin Dashboard - Add Writer</h1>
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-        {success && <p className="text-green-500 mb-4">{success}</p>}
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block mb-1">Email</label>
-            <input
-              type="email"
+    <Box
+      sx={{
+        bgcolor: '#F7F9FC',
+        minHeight: '100vh',
+        width: '100%',
+        p: 4,
+        boxSizing: 'border-box',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <Card
+        sx={{
+          borderRadius: '16px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+          bgcolor: 'white',
+          width: '100%',
+          maxWidth: 500,
+        }}
+      >
+        <CardContent>
+          <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold', color: '#1F2A44' }}>
+            Add New Writer
+          </Typography>
+
+          {error && (
+            <Typography variant="body2" sx={{ color: red[500], mb: 2 }}>
+              {error}
+            </Typography>
+          )}
+          {success && (
+            <Typography variant="body2" sx={{ color: green[500], mb: 2 }}>
+              {success}
+            </Typography>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <TextField
+              label="Email"
               name="email"
+              type="email"
               value={formData.email}
               onChange={handleChange}
-              className="w-full p-2 rounded bg-gray-700 text-white"
+              fullWidth
               required
+              sx={{ mb: 3 }}
             />
-          </div>
-          <div className="mb-4">
-            <label className="block mb-1">Name</label>
-            <input
-              type="text"
+            <TextField
+              label="Name"
               name="name"
+              type="text"
               value={formData.name}
               onChange={handleChange}
-              className="w-full p-2 rounded bg-gray-700 text-white"
+              fullWidth
               required
+              sx={{ mb: 3 }}
             />
-          </div>
-          <div className="mb-4">
-            <label className="block mb-1">Temporary Password</label>
-            <input
-              type="password"
+            <TextField
+              label="Temporary Password"
               name="password"
+              type="password"
               value={formData.password}
               onChange={handleChange}
-              className="w-full p-2 rounded bg-gray-700 text-white"
+              fullWidth
               required
+              sx={{ mb: 3 }}
             />
-          </div>
-          <button
-            type="submit"
-            className="w-full bg-lime-green text-white py-2 rounded-lg hover:bg-green-500"
-          >
-            Add Writer
-          </button>
-        </form>
-      </div>
-    </div>
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              disabled={loading}
+              sx={{
+                bgcolor: green[500],
+                color: 'white',
+                py: 1.5,
+                '&:hover': { bgcolor: green[700] },
+              }}
+            >
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Add Writer'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </Box>
   );
-}
+};
 
 export default AddWriter;

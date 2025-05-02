@@ -59,32 +59,32 @@ const isWriter = (req, res, next) => {
   next();
 };
 
-// Helper function to add signed URLs to jobs
-const addSignedUrls = async (jobs) => {
+// Helper function to add signed URLs to jobs or submissions
+const addSignedUrls = async (items, bucket = 'job-files') => {
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-  const jobsWithSignedUrls = await Promise.all(
-    jobs.map(async (job) => {
-      const jobData = job.get ? job.get({ plain: true }) : job;
-      if (jobData.file_url) {
-        const fileName = jobData.file_url.split('/').pop();
+  const itemsWithSignedUrls = await Promise.all(
+    items.map(async (item) => {
+      const itemData = item.get ? item.get({ plain: true }) : item;
+      if (itemData.file_url) {
+        const fileName = itemData.file_url.split('/').pop();
         const { data, error } = await supabase.storage
-          .from('job-files')
+          .from(bucket)
           .createSignedUrl(fileName, 3600);
 
         if (error) {
-          console.error('Error generating signed URL:', error);
-          console.log('Preserving original file_url:', jobData.file_url);
+          console.error(`Error generating signed URL for ${bucket}:`, error);
+          console.log('Preserving original file_url:', itemData.file_url);
         } else {
-          jobData.file_url = data.signedUrl;
-          console.log('Generated signed URL:', jobData.file_url);
+          itemData.signed_file_url = data.signedUrl;
+          console.log(`Generated signed URL for ${bucket}:`, itemData.signed_file_url);
         }
       }
-      return jobData;
+      return itemData;
     })
   );
 
-  return jobsWithSignedUrls;
+  return itemsWithSignedUrls;
 };
 
 // Helper function to update job status based on expected_return_date
@@ -139,8 +139,8 @@ const createSuperuser = async () => {
 // Initialize database and start server
 const startServer = async () => {
   try {
-    await initializeDatabase(); // Create tables if they don't exist
-    await createSuperuser(); // Create superadmin if not exist
+    await initializeDatabase();
+    await createSuperuser();
     app.listen(5000, () => {
       console.log('Server running on port 5000');
     });
@@ -208,7 +208,6 @@ app.get('/api/user/role', authenticateToken, async (req, res) => {
   }
 });
 
-// New Profile Endpoint
 app.get('/api/user/profile', authenticateToken, async (req, res) => {
   try {
     const user = await User.findOne({
@@ -263,9 +262,7 @@ app.post('/api/superadmin/add-writer', authenticateToken, isSuperadmin, async (r
 app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     let jobs = await Job.findAll({
-      where: {
-        status: 'posted',
-      },
+      where: { status: 'posted' },
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
         {
@@ -278,7 +275,6 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
       ],
     });
 
-    console.log('Pending jobs:', JSON.stringify(jobs, null, 2));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs);
 
@@ -289,13 +285,10 @@ app.get('/api/superadmin/jobs/pending', authenticateToken, isSuperadmin, async (
   }
 });
 
-// New endpoint for jobs with pending applications
 app.get('/api/superadmin/jobs/with-applications', authenticateToken, isSuperadmin, async (req, res) => {
   try {
     let jobs = await Job.findAll({
-      where: {
-        status: 'posted',
-      },
+      where: { status: 'posted' },
       include: [
         { model: User, as: 'client', attributes: ['name', 'email'] },
         {
@@ -308,7 +301,6 @@ app.get('/api/superadmin/jobs/with-applications', authenticateToken, isSuperadmi
       ],
     });
 
-    console.log('Jobs with pending applications:', JSON.stringify(jobs, null, 2));
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs);
 
@@ -403,6 +395,120 @@ app.patch('/api/superadmin/applications/:applicationId/assign', authenticateToke
   }
 });
 
+// Submission Endpoints
+app.get('/api/superadmin/submissions/pending', authenticateToken, isSuperadmin, async (req, res) => {
+  try {
+    let submissions = await Submission.findAll({
+      where: { status: 'pending' },
+      include: [
+        { model: Job, as: 'job', include: [{ model: User, as: 'client', attributes: ['name', 'email'] }] },
+        { model: User, as: 'writer', attributes: ['name', 'email'] },
+      ],
+    });
+
+    submissions = await addSignedUrls(submissions, 'submission-files');
+
+    res.json(submissions);
+  } catch (error) {
+    console.error('Error in /api/superadmin/submissions/pending:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+app.patch('/api/superadmin/submissions/:submissionId', authenticateToken, isSuperadmin, async (req, res) => {
+  try {
+    const { submissionId } = req.params;
+    const { status, feedback } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const submission = await Submission.findByPk(submissionId, {
+      include: [{ model: Job, as: 'job' }],
+    });
+    if (!submission) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    if (submission.status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending submissions can be reviewed' });
+    }
+
+    await Submission.update(
+      { status, feedback, updated_at: new Date() },
+      { where: { id: submissionId } }
+    );
+
+    if (status === 'approved') {
+      await Job.update(
+        { status: 'completed', submission_id: submissionId, updated_at: new Date() },
+        { where: { id: submission.job_id } }
+      );
+    }
+
+    let updatedSubmission = await Submission.findByPk(submissionId, {
+      include: [
+        { model: Job, as: 'job', include: [{ model: User, as: 'client', attributes: ['name', 'email'] }] },
+        { model: User, as: 'writer', attributes: ['name', 'email'] },
+      ],
+    });
+
+    updatedSubmission = (await addSignedUrls([updatedSubmission], 'submission-files'))[0];
+
+    res.json({ message: `Submission ${status} successfully`, submission: updatedSubmission });
+  } catch (error) {
+    console.error('Error in /api/superadmin/submissions/:submissionId:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+// Admin Dashboard Metrics Endpoint
+app.get('/api/superadmin/dashboard', authenticateToken, isSuperadmin, async (req, res) => {
+  try {
+    const totalJobs = await Job.count();
+    const pendingJobs = await Job.count({ where: { status: 'posted' } });
+    const assignedJobs = await Job.count({ where: { status: ['assigned', 'due', 'late'] } });
+    const completedJobs = await Job.count({ where: { status: 'completed' } });
+
+    const totalClients = await User.count({ where: { role: 'client' } });
+    const totalWriters = await User.count({ where: { role: 'writer' } });
+
+    const totalEarnings = await Job.sum('client_bid_amount', { where: { status: 'completed' } }) || 0;
+    const writerEarnings = await Job.sum('writer_share', { where: { status: 'completed' } }) || 0;
+
+    const jobStatusDistribution = await Job.findAll({
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('status')), 'count']],
+      group: ['status'],
+    });
+
+    const recentJobs = await Job.findAll({
+      limit: 5,
+      order: [['created_at', 'DESC']],
+      include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+    });
+
+    res.json({
+      totalJobs,
+      pendingJobs,
+      assignedJobs,
+      completedJobs,
+      totalClients,
+      totalWriters,
+      totalEarnings,
+      writerEarnings,
+      jobStatusDistribution: jobStatusDistribution.map((item) => ({
+        status: item.status,
+        count: parseInt(item.get('count')),
+      })),
+      recentJobs: await addSignedUrls(recentJobs),
+    });
+  } catch (error) {
+    console.error('Error in /api/superadmin/dashboard:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
 // Client Job Management Endpoints
 app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
   upload(req, res, (err) => {
@@ -430,7 +536,6 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
     let fileUrl = null;
     let fileExtension = null;
 
-    // Validation checks
     if (!description) {
       return res.status(400).json({ error: 'Description is required' });
     }
@@ -467,7 +572,6 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
     if (req.file) {
-      console.log('File received:', req.file.originalname, req.file.mimetype);
       const fileName = `${Date.now()}-${req.file.originalname}`;
       const { data, error } = await supabase.storage
         .from('job-files')
@@ -480,12 +584,8 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
         throw new Error('Failed to upload file to Supabase Storage: ' + error.message);
       }
 
-      console.log('Supabase upload response:', data);
       fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/job-files/${fileName}`;
       fileExtension = req.file.originalname.split('.').pop();
-      console.log('Constructed fileUrl:', fileUrl, 'File extension:', fileExtension);
-    } else {
-      console.log('No file uploaded');
     }
 
     const writerShare = bidAmount / 3;
@@ -510,13 +610,9 @@ app.post('/api/jobs/post', authenticateToken, isClient, (req, res, next) => {
       number_of_sources: parseInt(number_of_sources) || 0,
     });
 
-    console.log('Job created with file_url:', job.file_url, 'file_extension:', job.file_extension);
-
     let updatedJob = await Job.findByPk(job.id, {
       include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
     });
-
-    console.log('Fetched job after creation:', updatedJob.file_url, updatedJob.file_extension);
 
     updatedJob = await updateJobStatus(updatedJob);
     updatedJob = (await addSignedUrls([updatedJob]))[0];
@@ -735,14 +831,11 @@ app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
         {
           model: Job,
           as: 'job',
-          where: { status: ['assigned', 'due', 'late'] },
+          where: { status: ['assigned', 'due', 'late', 'pending_approval'] },
           required: true,
           include: [
-            {
-              model: User,
-              as: 'client',
-              attributes: ['name', 'email'],
-            },
+            { model: User, as: 'client', attributes: ['name', 'email'] },
+            { model: Submission, as: 'submissions' },
           ],
         },
       ],
@@ -750,7 +843,6 @@ app.get('/api/jobs/assigned', authenticateToken, isWriter, async (req, res) => {
     let jobs = applications.map((application) => application.job).filter((job) => job !== null);
     jobs = await Promise.all(jobs.map(async (job) => await updateJobStatus(job)));
     jobs = await addSignedUrls(jobs);
-    console.log('Assigned jobs sent:', JSON.stringify(jobs, null, 2));
     res.json(jobs);
   } catch (error) {
     console.error('Error in /api/jobs/assigned:', error);
@@ -767,7 +859,10 @@ app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, r
           model: Job,
           as: 'job',
           where: { status: 'completed' },
-          include: [{ model: User, as: 'client', attributes: ['name', 'email'] }],
+          include: [
+            { model: User, as: 'client', attributes: ['name', 'email'] },
+            { model: Submission, as: 'submissions' },
+          ],
         },
       ],
     });
@@ -777,6 +872,77 @@ app.get('/api/jobs/writer/completed', authenticateToken, isWriter, async (req, r
     res.json(jobs);
   } catch (error) {
     console.error('Error in /api/jobs/writer/completed:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+app.post('/api/jobs/:jobId/submit', authenticateToken, isWriter, (req, res, next) => {
+  upload(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await Job.findByPk(jobId, {
+      include: [{ model: Bid, as: 'bids', where: { writer_id: req.user.id, status: 'accepted' } }],
+    });
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found or you are not assigned to this job' });
+    }
+
+    if (!['assigned', 'due', 'late'].includes(job.status)) {
+      return res.status(400).json({ error: 'Job is not in a submittable state' });
+    }
+
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const fileName = `${Date.now()}-${req.file.originalname}`;
+    const { data, error } = await supabase.storage
+      .from('submission-files')
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+      });
+
+    if (error) {
+      console.error('Supabase upload error:', error);
+      throw new Error('Failed to upload file to Supabase Storage: ' + error.message);
+    }
+
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/submission-files/${fileName}`;
+    const fileExtension = req.file.originalname.split('.').pop();
+
+    const submission = await Submission.create({
+      job_id: jobId,
+      writer_id: req.user.id,
+      file_url: fileUrl,
+      file_extension: fileExtension,
+      status: 'pending',
+    });
+
+    await Job.update(
+      { status: 'pending_approval', pending_submission_id: submission.id, updated_at: new Date() },
+      { where: { id: jobId } }
+    );
+
+    let updatedJob = await Job.findByPk(jobId, {
+      include: [
+        { model: User, as: 'client', attributes: ['name', 'email'] },
+        { model: Submission, as: 'submissions' },
+      ],
+    });
+
+    updatedJob = await updateJobStatus(updatedJob);
+    updatedJob = (await addSignedUrls([updatedJob]))[0];
+
+    res.json({ message: 'Submission uploaded successfully', job: updatedJob, submission });
+  } catch (error) {
+    console.error('Error in /api/jobs/:jobId/submit:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
